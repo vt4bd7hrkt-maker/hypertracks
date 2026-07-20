@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>HyperTracks</title>
+  <meta name="description" content="HyperTracks — an auto-music object. Endless hyperpop instrumentals.">
+  <meta name="theme-color" content="#f2f0e9">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="HyperTracks">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+  <!-- paper texture + oscilloscope strip -->
+  <canvas id="viz" aria-hidden="true"></canvas>
+  <div class="grain" aria-hidden="true"></div>
+
+  <!-- entry poster (browsers need one gesture before audio) -->
+  <div id="overlay">
+    <div class="overlay-inner">
+      <div class="ov-top mono"><span class="stickr">☻</span></div>
+      <h1 class="masthead">HYPER<br>TRACKS</h1>
+      <div class="ov-foot mono">▶ TAP TO START</div>
+      <span class="burst b1" aria-hidden="true">✷</span>
+      <span class="burst b2" aria-hidden="true">✷</span>
+      <span class="burst b3" aria-hidden="true">✦</span>
+    </div>
+  </div>
+
+  <main>
+    <header class="mast">
+      <div class="mast-word">HYPERTRACKS</div>
+    </header>
+
+    <section id="trackcard" aria-live="polite">
+      <canvas id="mascot" width="48" height="48" aria-hidden="true"></canvas>
+      <h2 id="trackname">…</h2>
+      <div class="tickets mono">
+        <span id="trackmeta" class="ticket"></span>
+      </div>
+      <div id="timeline" class="progress-track" role="slider" aria-label="Timeline">
+        <div id="progress"></div>
+      </div>
+      <div class="timerow mono">
+        <span id="tcur">0:00</span>
+        <span id="histpos" class="dim"></span>
+        <span id="tlen">0:00</span>
+      </div>
+    </section>
+
+    <section id="panel">
+      <div class="tabs mono" role="tablist">
+        <button class="tab active" data-tab="mood" role="tab">[ MOOD ]</button>
+        <button class="tab" data-tab="sound" role="tab">[ SOUND ]</button>
+        <span class="tab-deco">★</span>
+      </div>
+      <div id="macros" class="slidergrid" aria-label="mood controls"></div>
+      <div id="soundtab" hidden>
+        <label class="macro bpmrow">
+          <span class="macro-name">TEMPO <b id="bpmval">150</b> BPM</span>
+          <input type="range" id="bpm" min="90" max="190" value="150" aria-label="Tempo">
+        </label>
+        <div id="fxpanel" class="slidergrid" aria-label="sound controls"></div>
+      </div>
+    </section>
+
+    <nav class="transport">
+      <button id="playpause" class="sq" aria-label="Play/Pause">❚❚</button>
+      <button id="back" class="sq" aria-label="Previous track" disabled>‹</button>
+      <button id="next" aria-label="Next track">NEXT ▶</button>
+      <button id="fwd" class="sq" aria-label="Forward track" disabled>›</button>
+      <div class="export mono">
+        <button id="export-wav">WAV↓</button>
+        <button id="export-mp3">MP3↓</button>
+      </div>
+    </nav>
+
+    <nav class="mutaterow">
+      <button id="mutate" aria-label="Mutate current track">⟳ MUTATE</button>
+      <label class="macro mutamt">
+        <span class="macro-name">AMOUNT</span>
+        <input type="range" id="mutamount" min="0" max="100" value="45" aria-label="Mutation amount">
+      </label>
+      <button id="rec" aria-label="Record vocals" hidden>● REC</button>
+      <button id="voxclear" aria-label="Remove vocal take" hidden>VOX ✕</button>
+    </nav>
+    <div id="export-status" class="mono" aria-live="polite"></div>
+
+  </main>
+
+  <script src="vendor/lamejs.iife.js"></script>
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
