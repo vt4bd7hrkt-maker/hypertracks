@@ -11,6 +11,7 @@ import { renderComposition } from './engine/renderer.js';
 import { encodeWav, encodeMp3, deliverFile, safeFilename } from './export/encode.js';
 import { Visualizer } from './ui/visualizer.js';
 import { recorderSupported, startTake, decodeTake } from './engine/vocals.js';
+import { bank } from './engine/assetbank.js';
 import { drawSticker } from './ui/sticker.js';
 import { randomSeed } from './core/rng.js';
 
@@ -59,7 +60,19 @@ const state = {
   scrubbing: false,
   vocal: null,     // { buffer, startPos } — current take, tied to this track
   take: null,      // active recorder handle while recording
+  recent: [],      // core asset ids of recent tracks (anti-repetition)
+  next: null,      // prefetched { seed, sig } for an instant, warm NEXT
 };
+
+/** the sounds a listener would recognize if repeated back-to-back */
+function coreIdsOf(comp) {
+  const s = comp.sound;
+  return [
+    s.kick.sampleId, s.snare.sampleId, s.mix.bedSampleId,
+    s.lead.wave && s.lead.wave.id,
+    s.lead.famName && ('fam:' + s.lead.famName),
+  ].filter(Boolean);
+}
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -99,6 +112,7 @@ function enterApp() {
   state.ctx = new AC({ latencyHint: 'interactive' });
   state.ctx.resume();
   state.player = new Player(state.ctx);
+  bank.init(state.ctx);
   state.viz = new Visualizer($('#viz'), state.ctx);
   state.viz.start();
 
@@ -129,7 +143,19 @@ function startTrack(comp, { record = true } = {}) {
     if (state.history.length > HISTORY_CAP) state.history.shift();
     state.hIndex = state.history.length - 1;
   }
+  bank.ensure(comp.assetIds); // lazy: only this track's sounds are fetched
+  state.recent = [...coreIdsOf(comp), ...state.recent].slice(0, 15);
+  armNext();
   syncUi();
+}
+
+/** pre-pick the next seed and warm its samples so NEXT starts fully loaded */
+function armNext() {
+  const seed = randomSeed();
+  const sig = JSON.stringify(state.macros);
+  const preview = compose(seed, state.macros, {}, state.recent);
+  bank.ensure(preview.assetIds);
+  state.next = { seed, sig };
 }
 
 function snapshot() {
@@ -143,20 +169,22 @@ function snapshot() {
 }
 
 function startFresh(seed) {
-  startTrack(compose(seed, state.macros));
+  startTrack(compose(seed, state.macros, {}, state.recent));
 }
 
 function nextTrack() {
   pulse($('#next'));
   if (state.ctx.state !== 'running') state.ctx.resume();
-  startFresh(randomSeed());
+  // use the prefetched seed when the sliders haven't moved (assets are warm)
+  const warm = state.next && state.next.sig === JSON.stringify(state.macros);
+  startFresh(warm ? state.next.seed : randomSeed());
 }
 
 function mutateTrack() {
   if (!state.comp) return;
   pulse($('#mutate'));
   if (state.ctx.state !== 'running') state.ctx.resume();
-  startTrack(mutate(state.comp, state.macros, state.mutation, randomSeed()));
+  startTrack(mutate(state.comp, state.macros, state.mutation, randomSeed(), state.recent));
 }
 
 /** Back/forward through history; restores composition AND slider state. */

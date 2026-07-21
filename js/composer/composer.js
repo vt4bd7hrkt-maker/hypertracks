@@ -28,10 +28,50 @@ import {
 import {
   designGroove, designBassRiff, designArpPattern, designStabs,
 } from './groove.js';
+import { SAMPLES, WAVES } from '../assets/manifest.js';
 
 export const DEFAULT_MACROS = {
   energy: 0.6, dream: 0.5, chaos: 0.35, glitch: 0.35,
   dark: 0.4, bounce: 0.55, space: 0.5, weird: 0.3,
+};
+
+// sample library pools, grouped once (manifest is static data)
+const POOL = {};
+for (const s of SAMPLES) (POOL[s.k] = POOL[s.k] || []).push(s);
+// pitched 'keys' samples grouped into instrument families by id prefix
+const KEY_FAMILIES = {};
+for (const s of POOL.keys || []) {
+  const fam = s.id.replace(/-\d+$/, '');
+  (KEY_FAMILIES[fam] = KEY_FAMILIES[fam] || []).push({ id: s.id, root: s.root });
+}
+const KEY_FAMILY_NAMES = Object.keys(KEY_FAMILIES);
+// wavetables by family
+const WAVE_FAMS = {};
+for (const w of WAVES) (WAVE_FAMS[w.fam] = WAVE_FAMS[w.fam] || []).push(w);
+
+// How sample-hungry each producer is, per department. This is the "different
+// studio setup" knob: rage is nearly all synthesis, lofi reaches for recorded
+// sound constantly, ambient builds on field recordings.
+const SAMPLE_AFFINITY = {
+  hyperpop:    { drums: 0.55, ac: 0.20, keys: 0.35, tex: 0.15, fx: 0.5 },
+  dreamcore:   { drums: 0.30, ac: 0.40, keys: 0.75, tex: 0.60, fx: 0.5 },
+  digicore:    { drums: 0.60, ac: 0.10, keys: 0.20, tex: 0.10, fx: 0.4 },
+  cloudrap:    { drums: 0.50, ac: 0.30, keys: 0.60, tex: 0.70, fx: 0.3 },
+  ambient:     { drums: 0.20, ac: 0.50, keys: 0.70, tex: 0.85, fx: 0.5 },
+  glitchpop:   { drums: 0.50, ac: 0.30, keys: 0.50, tex: 0.35, fx: 0.5 },
+  emo:         { drums: 0.45, ac: 0.35, keys: 0.60, tex: 0.40, fx: 0.4 },
+  futurepop:   { drums: 0.60, ac: 0.25, keys: 0.40, tex: 0.20, fx: 0.5 },
+  lofi:        { drums: 0.55, ac: 0.60, keys: 0.80, tex: 0.80, fx: 0.3 },
+  rage:        { drums: 0.65, ac: 0.10, keys: 0.15, tex: 0.15, fx: 0.4 },
+  experimental:{ drums: 0.35, ac: 0.60, keys: 0.50, tex: 0.70, fx: 0.6 },
+  chopcore:    { drums: 0.50, ac: 0.30, keys: 0.30, tex: 0.30, fx: 0.4 },
+  y2k:         { drums: 0.70, ac: 0.20, keys: 0.45, tex: 0.20, fx: 0.5 },
+};
+
+const WAVE_ROLES = {
+  lead: ['hvoice', 'distorted', 'fmsynth', 'aguitar', 'clavinet', 'oscchip', 'epiano', 'piano', 'flute', 'bitreduced'],
+  pad: ['eorgan', 'stringbox', 'cello', 'granular', 'birds', 'piano', 'epiano', 'hvoice'],
+  arp: ['oscchip', 'epiano', 'clavinet', 'bitreduced', 'fmsynth', 'flute'],
 };
 
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
@@ -51,7 +91,7 @@ const rr = (rng, [a, b]) => rng.range(a, b);
  *     voicing, sections, structureName, sound (per-role partial),
  *     roles (partial), hook }
  */
-export function compose(seed, macros, locks = {}) {
+export function compose(seed, macros, locks = {}, avoid = []) {
   const raw = { ...DEFAULT_MACROS, ...macros };
   const rng = new RNG(seed);
 
@@ -110,7 +150,7 @@ export function compose(seed, macros, locks = {}) {
   const totalBars = sections.reduce((n, s) => n + s.bars, 0);
   const duration = totalBars * bar;
 
-  const sound = designSound(rng, persona, m);
+  const sound = designSound(rng, persona, m, new Set(avoid));
   if (locks.sound) {
     for (const k of Object.keys(locks.sound)) sound[k] = { ...locks.sound[k] };
   }
@@ -230,6 +270,7 @@ export function compose(seed, macros, locks = {}) {
   events.sort((a, b) => a.t - b.t);
 
   const name = makeName(new RNG(seed ^ 0x9E3779B9));
+  const assetIds = collectAssetIds(sound);
   return {
     seed,
     name,
@@ -261,6 +302,7 @@ export function compose(seed, macros, locks = {}) {
     sections: sections.map((s) => ({ ...s })),
     macros: { ...raw },
     sound,
+    assetIds,
     events,
   };
 }
@@ -380,7 +422,7 @@ function buildStructure(rng, persona, m, bar) {
 // ---------------------------------------------------------------------------
 // sound design: resolve every timbre to jittered numbers (the "infinite kit")
 
-function designSound(rng, persona, m) {
+function designSound(rng, persona, m, avoidSet = new Set()) {
   const aggression = clamp01(m.energy * 0.5 + m.glitch * 0.25 + m.bounce * 0.15 + (1 - m.dream) * 0.15);
   const mix = persona.mix;
 
@@ -402,7 +444,7 @@ function designSound(rng, persona, m) {
   kick.gain *= 0.9 + aggression * 0.25;
   const snare = SNARES[rng.pick(persona.snares)]();
 
-  return {
+  const sound = {
     aggression,
     kick,
     snare,
@@ -468,6 +510,84 @@ function designSound(rng, persona, m) {
       chorus: Math.max(0, Math.min(1, persona.aff.dream * 0.5 + m.dream * 0.45 - 0.25 + rng.range(-0.1, 0.1))),
     },
   };
+  hybridize(sound, rng, persona, m, avoidSet);
+  return sound;
+}
+
+/**
+ * Hybridization: swap parts of the synthesized studio for RECORDED sound,
+ * per the persona's sample affinity. Anti-repetition: ids in avoidSet
+ * (core sounds of recent tracks) keep only 12% of their selection weight.
+ */
+function hybridize(sound, rng, persona, m, avoidSet) {
+  const aff = SAMPLE_AFFINITY[persona.id] || { drums: 0.4, ac: 0.3, keys: 0.4, tex: 0.3, fx: 0.4 };
+  const pickS = (kind, pred) => {
+    let pool = POOL[kind] || [];
+    if (pred) pool = pool.filter(pred);
+    if (!pool.length) return null;
+    return rng.weighted(pool.map((s) => [s, avoidSet.has(s.id) ? 0.12 : 1])).id;
+  };
+  const elec = (s) => s.s <= 1;      // BushDrum / BillieDrum machine kits
+  const acoustic = (s) => s.s === 2; // VCSL recordings
+
+  // drums: an electronic-kit studio or an acoustic/foley one — or all synth
+  if (rng.chance(aff.drums)) {
+    sound.kick.sampleId = pickS('kick', elec);
+    sound.kick.layer = m.energy > 0.6 && rng.chance(0.5); // synth sub underneath
+  } else if (rng.chance(aff.ac)) {
+    sound.kick.sampleId = pickS('kick', acoustic);
+  }
+  if (rng.chance(aff.drums)) sound.snare.sampleId = pickS('snare', elec);
+  else if (rng.chance(aff.ac)) sound.snare.sampleId = pickS('snare', acoustic);
+  sound.clap = { sampleId: rng.chance(Math.max(aff.drums, aff.ac)) ? pickS('clap') : null };
+  if (rng.chance(aff.drums * 0.7)) {
+    sound.hat.sampleId = pickS('hat');
+    sound.hat.sampleOpenId = pickS('hato');
+  }
+  if (rng.chance(Math.max(aff.ac, 0.25))) sound.perc.sampleId = pickS('perc');
+
+  // pitched instrument families (mallets/kalimba/bells) as the lead voice
+  if (KEY_FAMILY_NAMES.length && sound.lead.type !== 'none' && rng.chance(aff.keys)) {
+    const fam = rng.weighted(KEY_FAMILY_NAMES.map((f) => [f, avoidSet.has('fam:' + f) ? 0.15 : 1]));
+    sound.lead.type = 'keys';
+    sound.lead.famName = fam;
+    sound.lead.family = KEY_FAMILIES[fam].slice().sort((a, b) => a.root - b.root);
+    if (rng.chance(0.6)) sound.arp.useKeys = true; // arp plays the same instrument
+  }
+
+  // field-recording / texture beds
+  if (rng.chance(aff.tex)) sound.mix.bedSampleId = pickS('tex');
+
+  // recorded FX one-shots (gongs, cymbals, machine crashes)
+  if (rng.chance(aff.fx)) {
+    sound.fxS = {
+      impact: pickS('fx', (s) => s.id.startsWith('gong')) || pickS('fx'),
+      crash: pickS('fx', (s) => /crash|ride|suscym/.test(s.id)),
+    };
+  }
+
+  // wavetables: real AKWF spectra replace procedural ones most of the time
+  const wavePick = (role) => {
+    const fams = WAVE_ROLES[role].filter((f) => WAVE_FAMS[f]);
+    if (!fams.length) return null;
+    const fam = rng.pick(fams);
+    const w = rng.weighted(WAVE_FAMS[fam].map((x) => [x, avoidSet.has(x.id) ? 0.15 : 1]));
+    return { kind: 'akwf', id: w.id, imag: w.imag };
+  };
+  if (rng.chance(0.65)) sound.lead.wave = wavePick('lead') || sound.lead.wave;
+  if (rng.chance(0.65)) sound.pad.wave = wavePick('pad') || sound.pad.wave;
+  if (rng.chance(0.6)) sound.arp.wave = wavePick('arp') || sound.arp.wave;
+}
+
+/** every sample id a track needs — fetched lazily, awaited before export */
+function collectAssetIds(sound) {
+  const ids = [
+    sound.kick.sampleId, sound.snare.sampleId, sound.clap && sound.clap.sampleId,
+    sound.hat.sampleId, sound.hat.sampleOpenId, sound.perc.sampleId,
+    sound.mix.bedSampleId, sound.fxS && sound.fxS.impact, sound.fxS && sound.fxS.crash,
+    ...(sound.lead.family || []).map((x) => x.id),
+  ].filter(Boolean);
+  return [...new Set(ids)];
 }
 
 /**

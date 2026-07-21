@@ -1,3 +1,5 @@
+import { bank } from './assetbank.js';
+
 // AudioGraph: the per-composition mixing console.
 //
 // Built against BaseAudioContext, so the identical graph runs live
@@ -170,12 +172,16 @@ export class AudioGraph {
     // the persona ships it silent.
     {
       const type = mix.bed || 'air';
-      const bedBuf = type === 'vinyl' ? makeVinylBuffer(ctx, rng) : makeAirBuffer(ctx, rng);
+      // a sampled field-recording/texture bed when the track chose one (and
+      // it's decoded); generated hiss/vinyl otherwise
+      const sampled = mix.bedSampleId ? bank.get(mix.bedSampleId) : null;
+      const bedBuf = sampled
+        || (type === 'vinyl' ? makeVinylBuffer(ctx, rng) : makeAirBuffer(ctx, rng));
       const src = ctx.createBufferSource();
       src.buffer = bedBuf;
       src.loop = true;
-      this.baseBedGain = mix.bed ? mix.bedGain : 0.004;
-      this.bedGain = g(mix.bed ? mix.bedGain : 0);
+      this.baseBedGain = sampled ? 0.07 : (mix.bed ? mix.bedGain : 0.004);
+      this.bedGain = g(sampled ? 0.07 : (mix.bed ? mix.bedGain : 0));
       src.connect(this.bedGain);
       this.bedGain.connect(this.music); // beds duck with the music — they breathe
       src.start(ctx.currentTime + 0.01);

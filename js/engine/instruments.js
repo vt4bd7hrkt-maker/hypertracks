@@ -6,6 +6,7 @@
 // renderer — the guarantee that exports sound identical to playback.
 
 import { midiToFreq } from '../core/theory.js';
+import { bank } from './assetbank.js';
 
 /** Dispatch a composition event at absolute context time `when`. */
 export function playEvent(graph, ev, when) {
@@ -262,6 +263,22 @@ function drumBuf(graph, kind) {
 
 const DRUM_GAIN = { kick: 1.0, snare: 0.5, clap: 0.4, hatC: 0.3, hatO: 0.28 };
 
+/** play a library sample one-shot into a bus; returns false if not loaded
+ *  yet (caller falls back to synthesis for this hit) */
+function playSampleHit(graph, id, when, gain, dest, verbSend = 0) {
+  const buf = bank.get(id);
+  if (!buf) return false;
+  const src = graph.ctx.createBufferSource();
+  src.buffer = buf;
+  const g = graph.ctx.createGain();
+  g.gain.value = gain;
+  src.connect(g);
+  g.connect(dest);
+  if (verbSend > 0.02) sendTo(g, graph.reverbIn, verbSend);
+  src.start(when);
+  return true;
+}
+
 function playDrum(graph, kind, when, vel, verbSend = 0) {
   const src = graph.ctx.createBufferSource();
   src.buffer = drumBuf(graph, kind);
@@ -274,24 +291,37 @@ function playDrum(graph, kind, when, vel, verbSend = 0) {
 }
 
 function kick(graph, ev, when) {
+  const S = graph.sound.kick;
+  if (S.sampleId && playSampleHit(graph, S.sampleId, when, ev.vel, graph.drums)) {
+    if (S.layer) playDrum(graph, 'kick', when, ev.vel * 0.4); // synth sub under sample
+    return;
+  }
   playDrum(graph, 'kick', when, ev.vel);
 }
 
 function snare(graph, ev, when) {
-  playDrum(graph, 'snare', when, ev.vel, graph.sound.snare.verb);
+  const S = graph.sound.snare;
+  if (S.sampleId && playSampleHit(graph, S.sampleId, when, ev.vel * 0.75, graph.drums, S.verb)) return;
+  playDrum(graph, 'snare', when, ev.vel, S.verb);
 }
 
 function clap(graph, ev, when) {
+  const id = graph.sound.clap && graph.sound.clap.sampleId;
+  if (id && playSampleHit(graph, id, when, ev.vel * 0.65, graph.drums, 0.2)) return;
   playDrum(graph, 'clap', when, ev.vel, 0.25);
 }
 
 function hat(graph, ev, when) {
-  playDrum(graph, ev.open ? 'hatO' : 'hatC', when, ev.vel * (graph.sound.hat.gain * 2.4));
+  const H = graph.sound.hat;
+  const id = ev.open ? H.sampleOpenId : H.sampleId;
+  if (id && playSampleHit(graph, id, when, ev.vel * 0.55, graph.drums)) return;
+  playDrum(graph, ev.open ? 'hatO' : 'hatC', when, ev.vel * (H.gain * 2.4));
 }
 
 function perc(graph, ev, when) {
   const { ctx } = graph;
   const p = graph.sound.perc;
+  if (p.sampleId && playSampleHit(graph, p.sampleId, when, ev.vel * 0.7, graph.drums, 0.1)) return;
   const o = osc(ctx, p.tri ? 'triangle' : 'sine', p.freq, when, when + p.dec + 0.05);
   o.frequency.exponentialRampToValueAtTime(p.freq * 0.8, when + p.dec);
   const g = ctx.createGain();
@@ -379,8 +409,31 @@ function lead(graph, ev, when, opts = {}) {
     case 'pluck': sawPluck(graph, ev, when, opts); break;
     case 'air': airLead(graph, ev, when, opts); break;
     case 'string': stringLead(graph, ev, when, opts); break;
+    case 'keys': keysLead(graph, ev, when, opts); break;
     default: supersaw(graph, ev, when, opts); break;
   }
+}
+
+/** pitched library instrument (mallets/kalimba/bells): nearest sampled note,
+ *  repitched via playbackRate — a real recorded instrument as the lead */
+function keysLead(graph, ev, when, opts = {}) {
+  const L = graph.sound.lead;
+  let best = null, bd = 1e9;
+  for (const e of L.family || []) {
+    const b = bank.get(e.id);
+    if (!b) continue;
+    const d = Math.abs(e.root - ev.midi);
+    if (d < bd) { bd = d; best = { root: e.root, buf: b }; }
+  }
+  if (!best) { supersaw(graph, ev, when, opts); return; } // not loaded yet
+  const master = voiceOut(graph, when, Math.max(ev.dur, 0.25), (opts.gain ?? 0.55) * ev.vel, {
+    attack: 0.003, sus: 0.6, echo: 0.14,
+  });
+  const src = graph.ctx.createBufferSource();
+  src.buffer = best.buf;
+  src.playbackRate.value = Math.pow(2, (ev.midi - best.root) / 12);
+  src.connect(master);
+  src.start(when);
 }
 
 /** plucked-string lead via Karplus-Strong buffers — a different timbre class */
@@ -580,6 +633,10 @@ function pad(graph, ev, when) {
 
 function pluck(graph, ev, when) {
   const { ctx, macros: m } = graph;
+  if (graph.sound.arp && graph.sound.arp.useKeys && graph.sound.lead.family) {
+    keysLead(graph, ev, when, { gain: 0.3, noPorta: true });
+    return;
+  }
   const f = midiToFreq(ev.midi);
   const o = osc(ctx, 'square', f, when, when + ev.dur + 0.2);
   shapeOsc(o, graph, graph.sound.arp?.wave, 'square');
@@ -663,6 +720,8 @@ function swell(graph, ev, when) {
 
 function impact(graph, ev, when) {
   const { ctx } = graph;
+  const fxId = graph.sound.fxS && graph.sound.fxS.impact;
+  if (fxId && playSampleHit(graph, fxId, when, 0.8 * ev.vel, graph.fx, 0.4)) return;
   const n = noiseSource(graph, when, 0.6);
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass'; lp.frequency.value = 500;
@@ -681,6 +740,8 @@ function impact(graph, ev, when) {
 /** bright decaying wash at a section start — a synthesized crash */
 function crash(graph, ev, when) {
   const { ctx } = graph;
+  const fxId = graph.sound.fxS && graph.sound.fxS.crash;
+  if (fxId && playSampleHit(graph, fxId, when, 0.5 * ev.vel, graph.fx, 0.35)) return;
   const n = noiseSource(graph, when, 1.4);
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass'; hp.frequency.value = 5000;

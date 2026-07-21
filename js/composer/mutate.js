@@ -19,7 +19,7 @@
 import { RNG } from '../core/rng.js';
 import { compose } from './composer.js';
 
-export function mutate(parent, macros, amount, seed) {
+export function mutate(parent, macros, amount, seed, avoid = []) {
   const rng = new RNG((seed ^ 0xA5F1E2D3) >>> 0);
   const dna = parent.dna;
   const locks = { persona: parent.persona };
@@ -101,7 +101,7 @@ export function mutate(parent, macros, amount, seed) {
     if (rng.chance(0.4)) locks.sound = { bass: { ...parent.sound.bass } }; // low end continuity
   }
 
-  const child = compose(seed, macros, locks);
+  const child = compose(seed, macros, locks, avoid);
   child.baseName = parent.baseName;
   child.lineage = (parent.lineage ?? 1) + 1;
   child.name = `${parent.baseName} v${child.lineage}`;

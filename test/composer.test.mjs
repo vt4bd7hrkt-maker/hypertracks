@@ -271,6 +271,42 @@ console.log('event mix:', Object.fromEntries(Object.entries(typeCounts).sort((x,
   console.log(`commitment: kick loops ${kickLoops}/${checked}, bass rhythm loops ${bassLoops}/${checked}`);
 }
 
+// ---------------------------------------------------------------------------
+// 8. hybridization: tracks genuinely select library assets, and the
+// anti-repetition weighting actually steers selection
+
+{
+  let withSamples = 0, totalAssets = 0;
+  const kicksSeen = new Set();
+  for (let s = 1; s <= 30; s++) {
+    const c = compose(s * 60013, DEFAULT_MACROS);
+    assert(Array.isArray(c.assetIds), `seed ${s}: missing assetIds`);
+    totalAssets += c.assetIds.length;
+    if (c.assetIds.length > 0) withSamples++;
+    if (c.sound.kick.sampleId) kicksSeen.add(c.sound.kick.sampleId);
+  }
+  assert(withSamples >= 18, `only ${withSamples}/30 tracks use any library asset`);
+  assert(kicksSeen.size >= 4, `only ${kicksSeen.size} distinct sampled kicks across 30 tracks`);
+  console.log(`hybridization: ${withSamples}/30 tracks use assets, avg ${(totalAssets / 30).toFixed(1)} assets/track, ${kicksSeen.size} distinct kicks`);
+
+  // avoid-weighting: banning a chosen core sound changes the choice (usually)
+  let changed = 0, applicable = 0;
+  for (let s = 1; s <= 20; s++) {
+    const a = compose(s * 30011, DEFAULT_MACROS);
+    const core = a.sound.kick.sampleId;
+    if (!core) continue;
+    applicable++;
+    const b = compose(s * 30011, DEFAULT_MACROS, {}, [core]);
+    if (b.sound.kick.sampleId !== core) changed++;
+    // and identical avoid input stays deterministic
+    const b2 = compose(s * 30011, DEFAULT_MACROS, {}, [core]);
+    assert(JSON.stringify(b.events) === JSON.stringify(b2.events), `seed ${s}: avoid breaks determinism`);
+  }
+  assert(applicable === 0 || changed / applicable >= 0.5,
+    `avoid-weighting too weak: kick changed in ${changed}/${applicable}`);
+  console.log(`anti-repetition: banned kick re-picked differently in ${changed}/${applicable} tracks`);
+}
+
 // sanity: every persona is reachable at ITS OWN affinity point
 for (const p of PERSONAS) {
   let hit = false;

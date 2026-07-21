@@ -27,6 +27,7 @@ import { AudioGraph } from './graph.js';
 import { playEvent } from './instruments.js';
 import { RNG } from '../core/rng.js';
 import { resampleTake } from './vocals.js';
+import { bank } from './assetbank.js';
 
 const SAMPLE_RATE = 44100;
 // Bigger chunks = fewer boundaries = less redundant pre-roll convolution
@@ -48,6 +49,7 @@ const XFADE = 0.006;  // equal-power crossfade at each seam (seconds)
  * @returns {Promise<{numberOfChannels:number,length:number,sampleRate:number,getChannelData:(i:number)=>Float32Array}>}
  */
 export async function renderComposition(comp, macros, fx, userBpm, onProgress, vocal) {
+  await bank.ensure(comp.assetIds || []); // exports always use the full palette
   const SR = SAMPLE_RATE;
   const rate = comp.bpm / (userBpm || comp.bpm);
   const loopSamp = Math.round(comp.duration * rate * SR);
