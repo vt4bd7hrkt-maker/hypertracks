@@ -69,7 +69,6 @@ html, body {
   font-weight: 800;
   letter-spacing: -0.05em;
   text-transform: uppercase;
-  transform: rotate(-1.2deg);
 }
 .ov-foot {
   font-size: 0.85rem; letter-spacing: 0.28em;
@@ -267,17 +266,6 @@ button:disabled { opacity: 0.22; pointer-events: none; }
 #mutate:active { transform: rotate(0.5deg) translateY(2px); }
 #mutate.pulse { animation: pop 0.35s cubic-bezier(0.2, 0.9, 0.2, 1); }
 .mutamt { width: 110px; }
-#rec, #voxclear {
-  margin-left: auto;
-  padding: 10px 14px;
-  border: var(--rule);
-  background: var(--paper);
-  font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.12em;
-  transition: background 0.15s ease, transform 0.1s ease;
-}
-#rec.live { background: var(--ink); color: #ff5470; }
-#rec:active, #voxclear:active { transform: translateY(2px); }
-#voxclear { background: var(--acid); }
 .mutamt .macro-name { font-size: 0.55rem; }
 
 #export-status { min-height: 1em; font-size: 0.62rem; letter-spacing: 0.18em; color: var(--blue); }

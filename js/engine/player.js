@@ -31,8 +31,6 @@ export class Player {
     this.startTime = 0;     // wall-clock origin of composition-time 0
     this.eventIndex = 0;
     this.rate = 1;          // wall-seconds per composition-second
-    this.vocal = null;      // { buffer: AudioBuffer, startPos: comp-seconds }
-    this._vocalOrigin = null; // startTime value the take was last scheduled for
   }
 
   /** Start a composition. Any previous one is faded out (that IS the transition). */
@@ -44,15 +42,8 @@ export class Player {
     if (userBpm && userBpm !== comp.bpm) this.graph.setTempo(userBpm);
     this.startTime = this.ctx.currentTime + 0.08;
     this.eventIndex = 0;
-    this._vocalOrigin = null;
     this.timer = setInterval(() => this._tick(), TICK_MS);
     this._tick();
-  }
-
-  /** Attach/replace/clear the vocal take. Plays on every loop pass. */
-  setVocal(vocal) {
-    this.vocal = vocal || null;
-    this._vocalOrigin = null;
   }
 
   _tick() {
@@ -75,28 +66,6 @@ export class Player {
         break;
       }
     }
-    this._tickVocal(horizon);
-  }
-
-  /** Schedule the vocal take once per loop origin (also after seek/BPM rebase). */
-  _tickVocal(horizon) {
-    if (!this.vocal || !this.graph || this._vocalOrigin === this.startTime) return;
-    const now = this.ctx.currentTime;
-    const when = this.startTime + this.vocal.startPos * this.rate;
-    const dur = this.vocal.buffer.duration;
-    if (when > horizon) return;                 // not yet in the window
-    if (when + dur < now) { this._vocalOrigin = this.startTime; return; } // already over
-    try { this._vocalSrc?.stop(); } catch { /* ended */ } // seek/BPM rebase: no doubles
-    const src = this.ctx.createBufferSource();
-    src.buffer = this.vocal.buffer;
-    const g = this.ctx.createGain();
-    g.gain.value = 0.9;
-    src.connect(g);
-    g.connect(this.graph.out); // post-master: the voice stays clear of crush/pump
-    if (when >= now) src.start(when);
-    else src.start(now + 0.01, now - when);     // seek landed mid-take: resume inside it
-    this._vocalSrc = src;
-    this._vocalOrigin = this.startTime;
   }
 
   /** durations must stretch with the playback rate */

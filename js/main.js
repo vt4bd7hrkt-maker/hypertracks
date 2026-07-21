@@ -3,14 +3,13 @@
 // is delegated to engine/, all music decisions to composer/ — this file is
 // only glue + UI state.
 
-import { compose, DEFAULT_MACROS } from './composer/composer.js';
-import { mutate } from './composer/mutate.js';
+import { DEFAULT_MACROS } from './composer/composer.js';
+import { produce, produceMutation } from './composer/producer.js';
 import { Player } from './engine/player.js';
 import { DEFAULT_FX } from './engine/graph.js';
 import { renderComposition } from './engine/renderer.js';
 import { encodeWav, encodeMp3, deliverFile, safeFilename } from './export/encode.js';
 import { Visualizer } from './ui/visualizer.js';
-import { recorderSupported, startTake, decodeTake } from './engine/vocals.js';
 import { bank } from './engine/assetbank.js';
 import { drawSticker } from './ui/sticker.js';
 import { randomSeed } from './core/rng.js';
@@ -55,11 +54,9 @@ const state = {
   playing: false,
   exporting: false,
   mutation: 0.45,
-  history: [],   // {comp, macros, fx, userBpm, vocal} — nothing is ever lost
+  history: [],   // {comp, macros, fx, userBpm} — nothing is ever lost
   hIndex: -1,
   scrubbing: false,
-  vocal: null,     // { buffer, startPos } — current take, tied to this track
-  take: null,      // active recorder handle while recording
   recent: [],      // core asset ids of recent tracks (anti-repetition)
   next: null,      // prefetched { seed, sig } for an instant, warm NEXT
 };
@@ -94,9 +91,6 @@ function init() {
   $('#export-mp3').addEventListener('click', () => exportTrack('mp3'));
 
   $('#mutamount').addEventListener('input', (e) => { state.mutation = e.target.value / 100; });
-  if (recorderSupported()) $('#rec').hidden = false;
-  $('#rec').addEventListener('click', toggleRec);
-  $('#voxclear').addEventListener('click', () => setVocal(null));
   $('#bpm').addEventListener('input', (e) => {
     state.userBpm = Number(e.target.value);
     $('#bpmval').textContent = state.userBpm;
@@ -129,9 +123,6 @@ function enterApp() {
 
 /** Play `comp` and (optionally) record a history snapshot. */
 function startTrack(comp, { record = true } = {}) {
-  // a take belongs to its track: clear for the new one, but leave the previous
-  // history entry's saved take untouched so BACK restores it
-  setVocal(null, { keepHistory: true });
   state.comp = comp;
   state.userBpm = comp.bpm;
   state.player.play(comp, state.macros, state.fx, state.userBpm);
@@ -149,13 +140,15 @@ function startTrack(comp, { record = true } = {}) {
   syncUi();
 }
 
-/** pre-pick the next seed and warm its samples so NEXT starts fully loaded */
+/** pre-produce the next track (full A&R pass) and warm its samples, so
+ *  NEXT is instant AND already curated */
 function armNext() {
-  const seed = randomSeed();
   const sig = JSON.stringify(state.macros);
-  const preview = compose(seed, state.macros, {}, state.recent);
-  bank.ensure(preview.assetIds);
-  state.next = { seed, sig };
+  setTimeout(() => { // off the critical path of the track we just started
+    const comp = produce(randomSeed(), state.macros, state.recent);
+    bank.ensure(comp.assetIds);
+    state.next = { comp, sig };
+  }, 60);
 }
 
 function snapshot() {
@@ -164,27 +157,27 @@ function snapshot() {
     macros: { ...state.macros },
     fx: { ...state.fx },
     userBpm: state.userBpm,
-    vocal: state.vocal,
   };
 }
 
 function startFresh(seed) {
-  startTrack(compose(seed, state.macros, {}, state.recent));
+  startTrack(produce(seed, state.macros, state.recent));
 }
 
 function nextTrack() {
   pulse($('#next'));
   if (state.ctx.state !== 'running') state.ctx.resume();
-  // use the prefetched seed when the sliders haven't moved (assets are warm)
-  const warm = state.next && state.next.sig === JSON.stringify(state.macros);
-  startFresh(warm ? state.next.seed : randomSeed());
+  // use the pre-produced track when the sliders haven't moved (instant + warm)
+  const warm = state.next && state.next.comp && state.next.sig === JSON.stringify(state.macros);
+  if (warm) startTrack(state.next.comp);
+  else startFresh(randomSeed());
 }
 
 function mutateTrack() {
   if (!state.comp) return;
   pulse($('#mutate'));
   if (state.ctx.state !== 'running') state.ctx.resume();
-  startTrack(mutate(state.comp, state.macros, state.mutation, randomSeed(), state.recent));
+  startTrack(produceMutation(state.comp, state.macros, state.mutation, randomSeed(), state.recent));
 }
 
 /** Back/forward through history; restores composition AND slider state. */
@@ -200,7 +193,6 @@ function navigateHistory(dir) {
   state.comp = snap.comp;
   state.userBpm = snap.userBpm;
   state.player.play(snap.comp, state.macros, state.fx, state.userBpm);
-  setVocal(snap.vocal || null, { keepHistory: true });
   state.viz.setHueFromSeed(snap.comp.seed);
   state.viz.attach(state.player.graph);
   state.playing = true;
@@ -326,62 +318,6 @@ function uiLoop() {
 }
 
 // ---------------------------------------------------------------------------
-// vocal recording
-
-function setVocal(vocal, { keepHistory = false } = {}) {
-  state.vocal = vocal;
-  state.player?.setVocal(vocal);
-  $('#voxclear').hidden = !vocal;
-  // keep the current history entry in sync so BACK/FWD restores the take
-  if (!keepHistory && state.hIndex >= 0 && state.history[state.hIndex]) {
-    state.history[state.hIndex].vocal = vocal;
-  }
-}
-
-async function toggleRec() {
-  const btn = $('#rec');
-  if (state.take) {
-    // stop -> decode -> attach at the position where recording started
-    const { handle, startPos, timer } = state.take;
-    state.take = null;
-    clearInterval(timer);
-    btn.classList.remove('live');
-    btn.textContent = '● REC';
-    try {
-      const blob = await handle.stop();
-      const buffer = await decodeTake(state.ctx, blob);
-      // compensate output latency: the singer reacted to audio that left the
-      // speaker this much earlier than the clock position we noted
-      const lat = (state.ctx.outputLatency || 0) + (state.ctx.baseLatency || 0);
-      setVocal({ buffer, startPos: Math.max(0, startPos - lat) });
-    } catch (err) {
-      console.error('take failed', err);
-      $('#export-status').textContent = 'recording failed';
-      setTimeout(() => { $('#export-status').textContent = ''; }, 2500);
-    }
-    return;
-  }
-  if (!state.comp) return;
-  if (state.ctx.state !== 'running') { state.ctx.resume(); state.playing = true; }
-  try {
-    const handle = await startTake();
-    const startPos = state.player.position;
-    const t0 = Date.now();
-    const timer = setInterval(() => {
-      const s = Math.floor((Date.now() - t0) / 1000);
-      btn.textContent = `■ 0:${String(s % 60).padStart(2, '0')}`;
-    }, 250);
-    state.take = { handle, startPos, timer };
-    btn.classList.add('live');
-    btn.textContent = '■ 0:00';
-  } catch (err) {
-    console.error('mic denied', err);
-    $('#export-status').textContent = 'mic blocked';
-    setTimeout(() => { $('#export-status').textContent = ''; }, 2500);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // export
 
 async function exportTrack(format) {
@@ -395,7 +331,6 @@ async function exportTrack(format) {
     const buffer = await renderComposition(
       state.comp, state.macros, state.fx, state.userBpm,
       (frac) => { status.textContent = `rendering ${Math.round(frac * 100)}%`; },
-      state.vocal,
     );
     status.textContent = 'encoding…';
     await new Promise((r) => setTimeout(r, 30));

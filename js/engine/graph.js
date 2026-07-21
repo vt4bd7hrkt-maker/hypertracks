@@ -224,18 +224,18 @@ export class AudioGraph {
 
     // FILTER: darkness sets the emotional base (full dark buries the mix at
     // ~1 kHz), cutoff sweeps ±2 octaves on top
-    const base = 20000 * Math.pow(1000 / 20000, m.dark);
+    const base = 20000 * Math.pow(700 / 20000, m.dark);
     const f = Math.min(20000, Math.max(180, base * Math.pow(4, bi(fx.cutoff) * 1.2)));
     this.tone.frequency.setTargetAtTime(f, now, 0.05);
     // RESONANCE: from polite to full acid squelch
-    this.tone.Q.setTargetAtTime(0.3 + Math.max(0, bi(fx.res)) * 12 + Math.min(0, bi(fx.res)) * 0.15, now, 0.05);
+    this.tone.Q.setTargetAtTime(0.3 + Math.max(0, bi(fx.res)) * 14 + Math.min(0, bi(fx.res)) * 0.15, now, 0.05);
 
     // DRIVE: extremes must be unmistakable — whisper-clean to destroyed
     const driveAmt = mix.drive * (0.5 + m.energy * 0.9 + m.glitch * 0.3) * Math.pow(3.5, bi(fx.drive));
     this.driveIn.gain.setTargetAtTime(Math.min(5, driveAmt), now, 0.05);
 
     // CRUSH: persona base + knob; curve swap only when audibly different
-    const crushEff = Math.min(1, Math.max(0, mix.crush + bi(fx.crush) * 0.7));
+    const crushEff = Math.min(1, Math.max(0, mix.crush + bi(fx.crush) * 0.8));
     if (Math.abs(crushEff - this.lastCrush) > 0.03) {
       this.drive.curve = makeSaturationCurve(1.6, crushEff, this.curveKind);
       this.drive.oversample = crushEff > 0.05 ? 'none' : '2x';
@@ -245,14 +245,14 @@ export class AudioGraph {
     // SPACE: dry booth at the bottom, drowned cathedral at the top;
     // delay at full tilt goes into dub self-oscillation territory
     this.reverbWet.gain.setTargetAtTime(
-      Math.min(2, (0.06 + m.space * 0.85 + m.dream * 0.4) * Math.pow(5, bi(fx.reverb))), now, 0.05);
+      Math.min(2.2, (0.06 + m.space * 0.85 + m.dream * 0.4) * Math.pow(5, bi(fx.reverb))), now, 0.05);
     this.delayWet.gain.setTargetAtTime(
-      Math.min(1.6, (0.04 + m.space * 0.65) * Math.pow(5, bi(fx.echo))), now, 0.05);
+      Math.min(1.8, (0.04 + m.space * 0.65) * Math.pow(5, bi(fx.echo))), now, 0.05);
     this.delayFb.gain.setTargetAtTime(
-      Math.min(0.92, (0.12 + m.space * 0.45) * (1 + bi(fx.echo) * 0.8)), now, 0.05);
+      Math.min(0.95, (0.12 + m.space * 0.45) * (1 + bi(fx.echo) * 0.8)), now, 0.05);
 
     // WIDTH: dream opens the base image, the knob goes mono -> super-wide
-    const w = Math.min(2, Math.max(0, (0.85 + m.dream * 0.3) * (1 + bi(fx.width))));
+    const w = Math.min(2.4, Math.max(0, (0.85 + m.dream * 0.3) * (1 + bi(fx.width) * 1.2)));
     const a = 0.5 + 0.5 * w, b = 0.5 - 0.5 * w;
     this.wLL.gain.setTargetAtTime(a, now, 0.05);
     this.wRR.gain.setTargetAtTime(a, now, 0.05);
@@ -261,7 +261,7 @@ export class AudioGraph {
 
     // TEXTURE: ride the noise bed from silent to a foreground character layer
     this.bedGain.gain.setTargetAtTime(
-      Math.min(0.2, this.baseBedGain * Math.pow(10, bi(fx.texture)) * (fx.texture < 0.05 ? 0 : 1)), now, 0.1);
+      Math.min(0.26, this.baseBedGain * Math.pow(11, bi(fx.texture)) * (fx.texture < 0.05 ? 0 : 1)), now, 0.1);
   }
 
   /** back-compat shim — player calls applyLive via setLive */

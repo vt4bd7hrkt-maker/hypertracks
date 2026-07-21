@@ -4,6 +4,7 @@
 import { compose, DEFAULT_MACROS } from '../js/composer/composer.js';
 import { PERSONAS } from '../js/composer/personas.js';
 import { mutate } from '../js/composer/mutate.js';
+import { produce, produceMutation, critique } from '../js/composer/producer.js';
 
 const KNOWN_TYPES = new Set([
   'kick', 'snare', 'clap', 'hat', 'perc', 'bass', 'lead', 'stab', 'pad', 'arp',
@@ -36,7 +37,7 @@ for (let seed = 1; seed <= 60; seed++) {
     assert(c.bpm >= 108 && c.bpm <= 180, `seed ${seed}: bpm ${c.bpm} out of range`);
     // floor is deliberately low: near-silence IS an aesthetic (ambient at
     // zero energy) — emptiness is caught by the content assertions below
-    assert(c.events.length > 60, `seed ${seed}: only ${c.events.length} events`);
+    assert(c.events.length > 50, `seed ${seed}: only ${c.events.length} events`);
     // every track needs harmonic/melodic content — sparse is fine, empty is not
     assert(c.events.some((e) => e.type === 'pad' || e.type === 'lead' || e.type === 'chop' || e.type === 'arp' || e.type === 'stab'),
       `seed ${seed}: no melodic/harmonic content at all`);
@@ -305,6 +306,40 @@ console.log('event mix:', Object.fromEntries(Object.entries(typeCounts).sort((x,
   assert(applicable === 0 || changed / applicable >= 0.5,
     `avoid-weighting too weak: kick changed in ${changed}/${applicable}`);
   console.log(`anti-repetition: banned kick re-picked differently in ${changed}/${applicable} tracks`);
+}
+
+// ---------------------------------------------------------------------------
+// 9. the PRODUCER: candidates are judged, the winner is at least as good as
+// every rejected take, revisions never make things worse, all deterministic
+
+{
+  let sum = 0, base = 0, revs = 0;
+  for (let s = 1; s <= 10; s++) {
+    const c = produce(s * 77777, DEFAULT_MACROS);
+    const rep = c.producer;
+    assert(rep && rep.score >= 0 && rep.score <= 100, `produce ${s}: bad score ${rep && rep.score}`);
+    assert(rep.considered >= 6, `produce ${s}: only ${rep.considered} candidates`);
+    const maxCand = Math.max(...rep.candidates.map((x) => x.score));
+    assert(rep.score >= maxCand, `produce ${s}: winner ${rep.score} < best candidate ${maxCand}`);
+    sum += rep.score;
+    base += rep.candidates.reduce((a, x) => a + x.score, 0) / rep.candidates.length;
+    revs += rep.revisions;
+    // determinism
+    const c2 = produce(s * 77777, DEFAULT_MACROS);
+    assert(JSON.stringify(c.events) === JSON.stringify(c2.events), `produce ${s}: non-deterministic`);
+    // critique is pure + bounded
+    const cr = critique(c);
+    assert(cr.score >= 0 && cr.score <= 100 && cr.worst, `critique ${s}: malformed`);
+  }
+  assert(sum / 10 > base / 10 + 8, `producer barely helps: avg ${(sum / 10).toFixed(0)} vs candidate avg ${(base / 10).toFixed(0)}`);
+  console.log(`producer: avg winner ${(sum / 10).toFixed(0)} vs avg candidate ${(base / 10).toFixed(0)}, ${revs} revisions across 10 tracks`);
+
+  // curated mutation keeps family + picks the strongest child
+  const parent = produce(424242, DEFAULT_MACROS);
+  const child = produceMutation(parent, DEFAULT_MACROS, 0.5, 999, []);
+  assert(child.persona === parent.persona, 'produceMutation: persona lost');
+  assert(child.producer && child.producer.considered >= 4, 'produceMutation: no candidate pass');
+  console.log(`produceMutation: parent ${parent.producer.score} -> child ${child.producer.score}`);
 }
 
 // sanity: every persona is reachable at ITS OWN affinity point

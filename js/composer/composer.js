@@ -120,7 +120,7 @@ export function compose(seed, macros, locks = {}, avoid = []) {
   const swing = locks.swing ?? (m.dream > 0.85 ? 0.03 : rr(rng, persona.swing) * (0.6 + m.bounce * 0.6));
   // chaos=0 means machine-tight; high chaos means loose, human, unstable
   const humanize = (0.0015 + m.chaos * 0.006 + (persona.mix.bed === 'vinyl' ? 0.004 : 0))
-    * (m.chaos < 0.15 ? 0.25 : 1);
+    * (m.chaos < 0.15 ? 0.25 : m.chaos > 0.9 ? 2.2 : 1);
 
   const scaleName = locks.scaleName ?? pickScale(rng, persona, m);
   const scale = SCALES[scaleName];
@@ -139,7 +139,7 @@ export function compose(seed, macros, locks = {}, avoid = []) {
       }
     }
   }
-  const harmonicRhythm = locks.harmonicRhythm ?? rng.pick(persona.harmonicRhythm);
+  const harmonicRhythm = locks.harmonicRhythm ?? (m.dream > 0.85 ? 2 : rng.pick(persona.harmonicRhythm));
   const voicing = locks.voicing ?? rng.pick(persona.voicing);
 
   const chords = degrees.map((deg) => {

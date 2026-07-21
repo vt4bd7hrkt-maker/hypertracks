@@ -364,6 +364,43 @@ for root in (48, 55, 60, 67, 72):
         x.append(math.sin(ph + idx * math.sin(ph * 2.01)))
     save(env_exp(x, 0.5, hold=sec(0.05)), 'keys', f'fmkeys-{root}', root=root)
 
+# round 2 additions: more glitch, phone ring, punchier kicks, tonal riser, vox
+for i, (carrier, slices, bits) in enumerate([(1250, 8, 5), (3600, 3, 9)]):
+    n = sec(0.45)
+    x = ringmod(noise(n), carrier)
+    sl = n // slices
+    for s_i in range(slices):
+        seg = srcrush(x[s_i * sl:(s_i + 1) * sl], rnd.choice((3, 5, 8)))
+        for k, v in enumerate(seg): x[s_i * sl + k] = v * (1.0 if s_i % 2 == 0 else 0.1)
+    save(bitcrush(env_exp(x, 0.3), bits), 'perc', f'dg-glitch-{i+5}')
+
+ring = []
+for _ in range(2):
+    ring += env_exp(mix(sine(440, sec(0.35)), sine(480, sec(0.35))), 0.6, hold=sec(0.3)) + [0.0] * sec(0.18)
+save(tanh_drive(ring, 1.4), 'fx', 'dg-ring')
+
+n = sec(0.7)
+mixsrc = mix(gain(biquad(noise(n), 'lp', 5000, 0.7), 0.7), sine(330, n), gain(square(165, n), 0.4))
+stop2 = []
+pos = 0.0; speed = 1.0
+while pos < n - 1 and speed > 0.02:
+    stop2.append(mixsrc[int(pos)])
+    pos += speed; speed *= 0.9996
+save(tanh_drive(stop2, 2), 'fx', 'dg-vinylstop')
+
+for name, f0, f1, dec, drive, bits in (('dg-kick-punch', 130, 55, 0.16, 6, 12), ('dg-kick-break', 160, 80, 0.1, 8, 5)):
+    n2 = sec(dec + 0.1)
+    body = sine(lambda t, a=f0, b=f1: b + (a - b) * math.exp(-t / 0.009), n2)
+    save(bitcrush(hardclip(tanh_drive(env_exp(body, dec), drive), 0.8), bits), 'kick', name)
+
+n = sec(2.0)
+tone = sine(lambda t: 200 * (1600 / 200) ** (t / 2.0), n)
+x = mix(gain(tone, 0.6), gain(biquad(noise(n), 'bp', 900, 1.2), 0.5))
+save([s * (i / n) ** 1.5 for i, s in enumerate(x)], 'fx', 'dg-riser-tonal')
+
+for name, m_, vowel, dur, gl, crush in (('dg-vox-ih91', 91, 'i', 0.25, 9, 7), ('dg-vox-oh55', 55, 'o', 0.8, -4, 12)):
+    save(voxchop(midi_f(m_), vowel, dur, glide=gl, crush=crush), 'vox', name, root=m_)
+
 # ---------------------------------------------------------------------------
 # MckAudio machine cherry-picks (RD-6 808-clone, TR-8) if the clone is present
 

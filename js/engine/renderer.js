@@ -26,7 +26,6 @@
 import { AudioGraph } from './graph.js';
 import { playEvent } from './instruments.js';
 import { RNG } from '../core/rng.js';
-import { resampleTake } from './vocals.js';
 import { bank } from './assetbank.js';
 
 const SAMPLE_RATE = 44100;
@@ -45,10 +44,9 @@ const XFADE = 0.006;  // equal-power crossfade at each seam (seconds)
  * @param {object} [fx] performance-FX state (captured at export time)
  * @param {number} [userBpm] current tempo (defaults to the composed bpm)
  * @param {(frac:number)=>void} [onProgress] 0..1 progress callback
- * @param {{buffer:AudioBuffer,startPos:number}} [vocal] recorded take to mix in
  * @returns {Promise<{numberOfChannels:number,length:number,sampleRate:number,getChannelData:(i:number)=>Float32Array}>}
  */
-export async function renderComposition(comp, macros, fx, userBpm, onProgress, vocal) {
+export async function renderComposition(comp, macros, fx, userBpm, onProgress) {
   await bank.ensure(comp.assetIds || []); // exports always use the full palette
   const SR = SAMPLE_RATE;
   const rate = comp.bpm / (userBpm || comp.bpm);
@@ -128,19 +126,6 @@ export async function renderComposition(comp, macros, fx, userBpm, onProgress, v
     const fold = Math.min(tailSamp, totalSamp - loopSamp);
     for (let i = 0; i < fold; i++) out[i] += src[loopSamp + i];
     channels.push(out);
-  }
-
-  // mix the vocal take (resampled to 44.1 kHz), wrapping past the loop point
-  if (vocal?.buffer) {
-    const take = resampleTake(vocal.buffer, SR);
-    const off = Math.round(vocal.startPos * rate * SR);
-    for (let ch = 0; ch < 2; ch++) {
-      const v = take.channels[ch];
-      const out = channels[ch];
-      for (let i = 0; i < take.length; i++) {
-        out[(off + i) % loopSamp] += v[i] * 0.9;
-      }
-    }
   }
 
   // normalize
