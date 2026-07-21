@@ -1,47 +1,40 @@
-# HyperTracks — Sound Asset Pipeline
+# HyperTracks — Sound Asset Library
 
-The engine currently synthesizes everything (rendered per-track one-shots,
-seeded wavetables, KS strings, generated IRs). To push sonic diversity
-further, the next growth axis is a curated library of legally-clean audio
-assets that the sound-designer stage can pick from and layer with synthesis.
+The shipped hybrid library: **177 audio one-shots/textures (18 MB)** +
+**186 wavetable spectra** (embedded as harmonics in `js/assets/manifest.js`).
+Rebuilt from sources with `python3 tools/build_assets.py <downloads-dir>`.
 
-## Vetted CC0 / public-domain sources (verified 2026-07)
+## Sources and licenses (all verified at import time)
 
-| Source | Content | License |
-|---|---|---|
-| [VCSL — Versilian Community Sample Library](https://github.com/sgossner/VCSL) | multi-GB general-purpose instrument library (keys, mallets, winds, percussion) | CC0 |
-| [Boochi44/free-drum-samples](https://github.com/Boochi44/free-drum-samples) | 3 curated hip-hop/trap kits: kicks, 808s, snares, claps, hats, perc, FX | CC0 |
-| [Signature Sounds](https://signaturesounds.org/) | 80 GB+ field recordings, foley, percussion, one-shots, textures | CC0 |
-| [awesome-cc0 list](https://github.com/madjin/awesome-cc0) | meta-list of public-domain asset collections (audio section) | CC0 (varies per entry — verify each) |
-| [bratpeki/sample-packs](https://github.com/bratpeki/sample-packs) | link list of royalty-free packs | mixed — verify per pack |
-| [Freesound (CC0 filter)](https://freesound.org/) | one-shots/textures/foley; filter search to CC0 only | CC0 when filtered |
+| Source | Content used | License | Verification |
+|---|---|---|---|
+| [VCSL — Versilian Community Sample Library](https://github.com/sgossner/VCSL) | mallets/keys (glockenspiel, vibraphone, marimba, tubular bells, balafon, hand chimes, kalimba), acoustic percussion (claps, cowbells, claves, woodblock, shaker, tambourine, bongos, frame drum, darbuka, concert bass drum, snare), gongs, cymbals, ocean-drum textures | CC0-1.0 | GitHub license detection |
+| [EwonRael/BushDrum](https://github.com/EwonRael/BushDrum) | LinnDrum LM-2-style modeled kit (kicks, snares, hats, congas, toms, perc) | CC0-1.0 | GitHub license detection |
+| [EwonRael/BillieDrum](https://github.com/EwonRael/BillieDrum) | modeled electronic kit (kicks, snares, claps, hats, perc, crash/ride) | CC0-1.0 | GitHub license detection |
+| [AKWF-FREE — Adventure Kid Waveforms](https://github.com/KristofferKarlAxelEkstrand/AKWF-FREE) | 186 single-cycle waveforms from 16 families (human voice, e-piano, chip, FM, distorted, guitar, clavinet, flute, organ, strings, cello, granular, birds, piano, e-bass, bit-reduced), converted to Fourier harmonic tables | CC0-1.0 | GitHub license detection |
+| [Stephen P. McGreevy — Auroral Chorus (VLF natural radio)](https://archive.org/details/lightning_elf_vlf_q-bursts) | field-recording textures: VLF whistlers/sferics, shortwave time-station mixture | Public Domain Mark 1.0 | archive.org `licenseurl` metadata |
 
-Rules: only CC0 / public-domain enters the repo. No "royalty-free but
-non-redistributable" packs (they can be *used* but not shipped in a repo).
-Record provenance per file in `assets/manifest.json`.
+Rules: only CC0 / public-domain material enters the repo; licenses are
+verified from repository/archive metadata, not READMEs. Provenance per file
+lives in the generated manifest (`s` field indexes `SOURCES`).
 
-## Integration design (next iteration)
+## Inventory (assets/ + manifest)
 
-1. `assets/manifest.json` — `{ id, path, kind: kick|snare|hat|perc|chop|texture|ir, tags, source, license }`.
-2. `AssetBank` — fetched + decoded at app boot (live ctx), Float32 data
-   copied into OfflineAudioContext buffers at export (decode once, reuse).
-3. `designSound()` gains sampled kit variants: a kit is then a *blend* —
-   e.g. sampled kick layered under the rendered transient, sampled textures
-   under the generated beds. Personas weight sampled vs. synthesized.
-4. Fallback: if assets fail to load (offline first run), the rendered
-   pipeline covers everything — samples are an enhancement, never a
-   dependency.
+- kick 9 · snare 10 · clap 9 · hat 3 (+2 open) · percussion 71
+- pitched keys/mallet notes 49 (7 instrument families, root-tagged)
+- FX one-shots 16 (gongs, cymbals, machine crashes)
+- textures 8 (ocean drum, VLF radio) as 96k M4A; one-shots as 16-bit WAV
+  (AAC priming delay would smear transients)
+- wavetables 186 (no audio fetch — shipped as harmonics in JS)
 
-## The open product decision
+## How the engine uses it
 
-This is a PWA that runs on an iPhone. Asset weight is a real trade-off:
-
-- **Slim tier (~10–20 MB)**: one curated drum-kit set + a handful of
-  textures/IRs. Feasible to vendor directly into the repo.
-- **Rich tier (100 MB+)**: VCSL/Signature-scale variety, needs lazy
-  loading + cache management (service worker) and probably hosting outside
-  GitHub Pages limits.
-
-Decide tier before bulk-importing. Recommendation: start slim (kicks,
-snares, hats, claps ×3 kits + ~10 textures), measure the audible win, then
-grow.
+1. `designSound()` consults per-persona **sample affinities** (drums /
+   acoustic / keys / textures / fx): rage is nearly all synthesis, lofi and
+   ambient reach for recorded sound constantly — different studio setups.
+2. Selection is seeded (deterministic per track) with **anti-repetition**:
+   core sounds of the last ~3 tracks keep 12–15% selection weight.
+3. `AssetBank` lazy-loads only the current track's files (typically 8–16,
+   well under 1 MB) and prefetches the next seed's set; instruments fall
+   back to synthesis for any hit whose sample hasn't decoded yet; exports
+   `await bank.ensure()` so rendered files always use the full palette.
