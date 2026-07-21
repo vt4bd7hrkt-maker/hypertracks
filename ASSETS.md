@@ -1,8 +1,14 @@
 # HyperTracks — Sound Asset Library
 
-The shipped hybrid library: **177 audio one-shots/textures (18 MB)** +
+The shipped hybrid library: **278 audio one-shots/textures (25 MB)** +
 **186 wavetable spectra** (embedded as harmonics in `js/assets/manifest.js`).
-Rebuilt from sources with `python3 tools/build_assets.py <downloads-dir>`.
+Two build scripts: `tools/build_assets.py` (external CC0/PD sources) and
+`tools/build_digital_pack.py` (the hyperpop digital pack — 101 curated
+sounds RENDERED in-repo with heavy baked processing: 808s, distorted kicks,
+clipped snares, glitch percussion, chip/console bleeps, DTMF/UI sounds,
+formant vocal chops, FM keys, VHS/cassette/modem textures, risers,
+tape-stops, reverses — CC0-by-construction, plus cherry-picks of real
+Behringer RD-6 / Roland TR-8 machine recordings).
 
 ## Sources and licenses (all verified at import time)
 
@@ -13,6 +19,8 @@ Rebuilt from sources with `python3 tools/build_assets.py <downloads-dir>`.
 | [EwonRael/BillieDrum](https://github.com/EwonRael/BillieDrum) | modeled electronic kit (kicks, snares, claps, hats, perc, crash/ride) | CC0-1.0 | GitHub license detection |
 | [AKWF-FREE — Adventure Kid Waveforms](https://github.com/KristofferKarlAxelEkstrand/AKWF-FREE) | 186 single-cycle waveforms from 16 families (human voice, e-piano, chip, FM, distorted, guitar, clavinet, flute, organ, strings, cello, granular, birds, piano, e-bass, bit-reduced), converted to Fourier harmonic tables | CC0-1.0 | GitHub license detection |
 | [Stephen P. McGreevy — Auroral Chorus (VLF natural radio)](https://archive.org/details/lightning_elf_vlf_q-bursts) | field-recording textures: VLF whistlers/sferics, shortwave time-station mixture | Public Domain Mark 1.0 | archive.org `licenseurl` metadata |
+| HyperTracks digital pack (`tools/build_digital_pack.py`) | 808s (clean/distorted), reeses, clipped kicks/snares, crunchy claps, electronic hats, clicks, glitch perc, chip bleeps, DTMF/UI/camera sounds, formant vocal chops, FM keys, VHS/cassette/modem textures, risers, tape-stops, reverses | CC0-1.0 (original rendered work) | rendered in-repo |
+| [MckAudio/MckSamplePacks](https://github.com/MckAudio/MckSamplePacks) | real drum-machine one-shots: Behringer RD-6 (808 clone), Roland TR-8 (808/909) | CC0-1.0 | GitHub license detection |
 
 Rules: only CC0 / public-domain material enters the repo; licenses are
 verified from repository/archive metadata, not READMEs. Provenance per file
@@ -20,12 +28,23 @@ lives in the generated manifest (`s` field indexes `SOURCES`).
 
 ## Inventory (assets/ + manifest)
 
-- kick 9 · snare 10 · clap 9 · hat 3 (+2 open) · percussion 71
-- pitched keys/mallet notes 49 (7 instrument families, root-tagged)
-- FX one-shots 16 (gongs, cymbals, machine crashes)
-- textures 8 (ocean drum, VLF radio) as 96k M4A; one-shots as 16-bit WAV
-  (AAC priming delay would smear transients)
+- kicks 23 · snares 20 · claps 16 · hats 12 (+5 open) · percussion 95
+  (incl. glitch perc, chip bleeps, DTMF/UI/camera, machine toms/rims)
+- bass one-shots 12 (808 clean ×6, 808 distorted ×3, reese ×3 — root-tagged,
+  repitched per note with glides)
+- vocal chops 8 (formant-synthesized, root-tagged, repitched to the topline)
+- pitched keys 54 (7 mallet/pluck families + FM digital keys family)
+- FX one-shots 22 (risers, tape-stop, reverse-crash, sub impacts,
+  downsweeps, gongs, cymbals)
+- textures 11 (VHS bed, cassette bed, modem handshake, VLF radio, ocean
+  drum) as 96k M4A; one-shots as 16-bit WAV (AAC priming would smear
+  transients)
 - wavetables 186 (no audio fetch — shipped as harmonics in JS)
+
+Identity note: acoustic/VCSL material is now RESERVED for the personas where
+it is a creative choice (lofi, ambient, dreamcore, experimental, cloudrap);
+the electronic personas (hyperpop, digicore, rage, glitchpop, y2k, chopcore,
+futurepop) draw from the digital pack and machine recordings.
 
 ## How the engine uses it
 

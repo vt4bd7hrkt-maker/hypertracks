@@ -337,6 +337,31 @@ function perc(graph, ev, when) {
 function bass(graph, ev, when) {
   const { ctx } = graph;
   const bs = graph.sound.bass;
+  if (bs.type === 'sample' && bs.family) {
+    const best = nearestLoaded(bs.family, ev.midi);
+    if (best) {
+      const src = ctx.createBufferSource();
+      src.buffer = best.buf;
+      const rate = Math.pow(2, (ev.midi - best.root) / 12);
+      if (ev.glideFrom !== undefined) {
+        src.playbackRate.setValueAtTime(rate * Math.pow(2, (ev.glideFrom - ev.midi) / 12), when);
+        src.playbackRate.exponentialRampToValueAtTime(rate, when + Math.min(0.09, ev.dur * 0.4));
+      } else if (ev.glideTo !== undefined) {
+        src.playbackRate.setValueAtTime(rate, when + ev.dur * 0.55);
+        src.playbackRate.exponentialRampToValueAtTime(rate * Math.pow(2, (ev.glideTo - ev.midi) / 12), when + ev.dur);
+        src.playbackRate.value = rate;
+      } else {
+        src.playbackRate.value = rate;
+      }
+      const g = ctx.createGain();
+      env(g.gain, when, ev.vel * bs.gain, 0.003, Math.max(ev.dur, 0.12), 0.8, when + ev.dur);
+      src.connect(g);
+      g.connect(graph.bass);
+      src.start(when);
+      return;
+    }
+    // family not decoded yet: fall through to synthesis for this note
+  }
   const f = midiToFreq(ev.midi);
   const g = ctx.createGain();
   env(g.gain, when, ev.vel * bs.gain, 0.005, Math.max(ev.dur, 0.12), 0.7, when + ev.dur);
@@ -414,17 +439,23 @@ function lead(graph, ev, when, opts = {}) {
   }
 }
 
+/** nearest loaded family entry to a target midi note */
+function nearestLoaded(family, midi) {
+  let best = null, bd = 1e9;
+  for (const e of family || []) {
+    const b = bank.get(e.id);
+    if (!b) continue;
+    const d = Math.abs(e.root - midi);
+    if (d < bd) { bd = d; best = { root: e.root, buf: b }; }
+  }
+  return best;
+}
+
 /** pitched library instrument (mallets/kalimba/bells): nearest sampled note,
  *  repitched via playbackRate — a real recorded instrument as the lead */
 function keysLead(graph, ev, when, opts = {}) {
   const L = graph.sound.lead;
-  let best = null, bd = 1e9;
-  for (const e of L.family || []) {
-    const b = bank.get(e.id);
-    if (!b) continue;
-    const d = Math.abs(e.root - ev.midi);
-    if (d < bd) { bd = d; best = { root: e.root, buf: b }; }
-  }
+  const best = nearestLoaded(L.family, ev.midi);
   if (!best) { supersaw(graph, ev, when, opts); return; } // not loaded yet
   const master = voiceOut(graph, when, Math.max(ev.dur, 0.25), (opts.gain ?? 0.55) * ev.vel, {
     attack: 0.003, sus: 0.6, echo: 0.14,
@@ -659,6 +690,27 @@ function pluck(graph, ev, when) {
 function vocalChop(graph, ev, when) {
   const { ctx, macros: m } = graph;
   const C = graph.sound.chop;
+  if (C.family) {
+    const best = nearestLoaded(C.family, ev.midi);
+    if (best) {
+      const master = voiceOut(graph, when, Math.max(ev.dur, 0.12), 0.6 * ev.vel, {
+        attack: 0.005, sus: 0.7, echo: 0.16,
+      });
+      sendTo(master, graph.reverbIn, 0.2 + m.space * 0.25);
+      const src = ctx.createBufferSource();
+      src.buffer = best.buf;
+      const rate = Math.pow(2, (ev.midi - best.root) / 12);
+      if (ev.glide) {
+        src.playbackRate.setValueAtTime(rate * Math.pow(2, ev.glide / 12), when);
+        src.playbackRate.exponentialRampToValueAtTime(rate, when + Math.min(0.07, ev.dur * 0.5));
+      } else {
+        src.playbackRate.value = rate;
+      }
+      src.connect(master);
+      src.start(when);
+      return;
+    }
+  }
   const f = midiToFreq(ev.midi);
   const o = osc(ctx, 'sawtooth', f, when, when + ev.dur + 0.15);
   if (ev.glide) {
@@ -689,8 +741,25 @@ function vocalChop(graph, ev, when) {
 
 // --- FX ---------------------------------------------------------------------------
 
+function playFxFit(graph, id, when, dur, gainV) {
+  const buf = bank.get(id);
+  if (!buf) return false;
+  const src = graph.ctx.createBufferSource();
+  src.buffer = buf;
+  src.playbackRate.value = Math.max(0.4, Math.min(2.5, buf.duration / Math.max(dur, 0.4)));
+  const g = graph.ctx.createGain();
+  g.gain.value = gainV;
+  src.connect(g);
+  g.connect(graph.fx);
+  sendTo(g, graph.reverbIn, 0.3);
+  src.start(when);
+  return true;
+}
+
 function riser(graph, ev, when) {
   const { ctx } = graph;
+  const fxId = graph.sound.fxS && graph.sound.fxS.riser;
+  if (fxId && playFxFit(graph, fxId, when, ev.dur, 0.55)) return;
   const n = noiseSource(graph, when, ev.dur);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass'; bp.Q.value = 1.2;
@@ -707,6 +776,8 @@ function riser(graph, ev, when) {
 /** softer, airier build than a riser — a reverse-cymbal-style swell */
 function swell(graph, ev, when) {
   const { ctx } = graph;
+  const fxId = graph.sound.fxS && graph.sound.fxS.swell;
+  if (fxId && playFxFit(graph, fxId, when, ev.dur, 0.5)) return;
   const n = noiseSource(graph, when, ev.dur);
   const hp = ctx.createBiquadFilter();
   hp.type = 'highpass'; hp.frequency.value = 2800;
@@ -753,6 +824,8 @@ function crash(graph, ev, when) {
 
 function downlift(graph, ev, when) {
   const { ctx } = graph;
+  const fxId = graph.sound.fxS && graph.sound.fxS.downlift;
+  if (fxId && playFxFit(graph, fxId, when, ev.dur, 0.45)) return;
   const n = noiseSource(graph, when, ev.dur);
   const bp = ctx.createBiquadFilter();
   bp.type = 'bandpass'; bp.Q.value = 1;

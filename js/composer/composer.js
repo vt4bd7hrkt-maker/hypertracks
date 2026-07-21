@@ -53,20 +53,30 @@ for (const w of WAVES) (WAVE_FAMS[w.fam] = WAVE_FAMS[w.fam] || []).push(w);
 // studio setup" knob: rage is nearly all synthesis, lofi reaches for recorded
 // sound constantly, ambient builds on field recordings.
 const SAMPLE_AFFINITY = {
-  hyperpop:    { drums: 0.55, ac: 0.20, keys: 0.35, tex: 0.15, fx: 0.5 },
-  dreamcore:   { drums: 0.30, ac: 0.40, keys: 0.75, tex: 0.60, fx: 0.5 },
-  digicore:    { drums: 0.60, ac: 0.10, keys: 0.20, tex: 0.10, fx: 0.4 },
-  cloudrap:    { drums: 0.50, ac: 0.30, keys: 0.60, tex: 0.70, fx: 0.3 },
-  ambient:     { drums: 0.20, ac: 0.50, keys: 0.70, tex: 0.85, fx: 0.5 },
-  glitchpop:   { drums: 0.50, ac: 0.30, keys: 0.50, tex: 0.35, fx: 0.5 },
-  emo:         { drums: 0.45, ac: 0.35, keys: 0.60, tex: 0.40, fx: 0.4 },
-  futurepop:   { drums: 0.60, ac: 0.25, keys: 0.40, tex: 0.20, fx: 0.5 },
-  lofi:        { drums: 0.55, ac: 0.60, keys: 0.80, tex: 0.80, fx: 0.3 },
-  rage:        { drums: 0.65, ac: 0.10, keys: 0.15, tex: 0.15, fx: 0.4 },
-  experimental:{ drums: 0.35, ac: 0.60, keys: 0.50, tex: 0.70, fx: 0.6 },
-  chopcore:    { drums: 0.50, ac: 0.30, keys: 0.30, tex: 0.30, fx: 0.4 },
-  y2k:         { drums: 0.70, ac: 0.20, keys: 0.45, tex: 0.20, fx: 0.5 },
+  hyperpop:    { drums: 0.80, ac: 0.05, keys: 0.40, tex: 0.20, fx: 0.6, bass: 0.60, vox: 0.70 },
+  dreamcore:   { drums: 0.35, ac: 0.35, keys: 0.75, tex: 0.60, fx: 0.5, bass: 0.30, vox: 0.50 },
+  digicore:    { drums: 0.85, ac: 0.03, keys: 0.30, tex: 0.15, fx: 0.5, bass: 0.70, vox: 0.40 },
+  cloudrap:    { drums: 0.55, ac: 0.20, keys: 0.60, tex: 0.70, fx: 0.3, bass: 0.70, vox: 0.40 },
+  ambient:     { drums: 0.20, ac: 0.45, keys: 0.70, tex: 0.85, fx: 0.5, bass: 0.20, vox: 0.30 },
+  glitchpop:   { drums: 0.75, ac: 0.10, keys: 0.50, tex: 0.40, fx: 0.6, bass: 0.50, vox: 0.40 },
+  emo:         { drums: 0.60, ac: 0.20, keys: 0.60, tex: 0.40, fx: 0.4, bass: 0.50, vox: 0.50 },
+  futurepop:   { drums: 0.70, ac: 0.10, keys: 0.45, tex: 0.20, fx: 0.5, bass: 0.60, vox: 0.40 },
+  lofi:        { drums: 0.60, ac: 0.50, keys: 0.80, tex: 0.80, fx: 0.3, bass: 0.40, vox: 0.30 },
+  rage:        { drums: 0.85, ac: 0.03, keys: 0.15, tex: 0.15, fx: 0.4, bass: 0.80, vox: 0.20 },
+  experimental:{ drums: 0.45, ac: 0.45, keys: 0.50, tex: 0.70, fx: 0.6, bass: 0.40, vox: 0.50 },
+  chopcore:    { drums: 0.60, ac: 0.15, keys: 0.30, tex: 0.30, fx: 0.4, bass: 0.50, vox: 0.95 },
+  y2k:         { drums: 0.85, ac: 0.08, keys: 0.50, tex: 0.25, fx: 0.6, bass: 0.50, vox: 0.30 },
 };
+
+// bass one-shot families (dg-808 / dg-808dist / dg-reese), root-tagged
+const BASS_FAMILIES = {};
+for (const s of POOL.bass || []) {
+  const fam = s.id.replace(/-\d+$/, '');
+  (BASS_FAMILIES[fam] = BASS_FAMILIES[fam] || []).push({ id: s.id, root: s.root });
+}
+const BASS_FAMILY_NAMES = Object.keys(BASS_FAMILIES);
+const VOX_FAMILY = (POOL.vox || []).map((s) => ({ id: s.id, root: s.root }));
+const ELEC_PERSONAS = new Set(['hyperpop', 'digicore', 'glitchpop', 'rage', 'y2k', 'chopcore', 'futurepop']);
 
 const WAVE_ROLES = {
   lead: ['hvoice', 'distorted', 'fmsynth', 'aguitar', 'clavinet', 'oscchip', 'epiano', 'piano', 'flute', 'bitreduced'],
@@ -520,49 +530,81 @@ function designSound(rng, persona, m, avoidSet = new Set()) {
  * (core sounds of recent tracks) keep only 12% of their selection weight.
  */
 function hybridize(sound, rng, persona, m, avoidSet) {
-  const aff = SAMPLE_AFFINITY[persona.id] || { drums: 0.4, ac: 0.3, keys: 0.4, tex: 0.3, fx: 0.4 };
+  const aff = SAMPLE_AFFINITY[persona.id] || { drums: 0.5, ac: 0.2, keys: 0.4, tex: 0.3, fx: 0.4, bass: 0.4, vox: 0.4 };
+  const elecP = ELEC_PERSONAS.has(persona.id);
   const pickS = (kind, pred) => {
     let pool = POOL[kind] || [];
     if (pred) pool = pool.filter(pred);
     if (!pool.length) return null;
     return rng.weighted(pool.map((s) => [s, avoidSet.has(s.id) ? 0.12 : 1])).id;
   };
-  const elec = (s) => s.s <= 1;      // BushDrum / BillieDrum machine kits
-  const acoustic = (s) => s.s === 2; // VCSL recordings
+  // sources: 0/1 modeled kits, 2 VCSL recordings, 5 rendered digital pack, 6 real machines
+  const digital = (s) => s.s === 0 || s.s === 1 || s.s === 5 || s.s === 6;
+  const acoustic = (s) => s.s === 2;
 
-  // drums: an electronic-kit studio or an acoustic/foley one — or all synth
+  // drums: electronic personas live on the digital pools; acoustic recordings
+  // are reserved for the personas where they're a creative choice
   if (rng.chance(aff.drums)) {
-    sound.kick.sampleId = pickS('kick', elec);
-    sound.kick.layer = m.energy > 0.6 && rng.chance(0.5); // synth sub underneath
-  } else if (rng.chance(aff.ac)) {
+    sound.kick.sampleId = pickS('kick', digital);
+    sound.kick.layer = m.energy > 0.6 && rng.chance(0.5);
+  } else if (!elecP && rng.chance(aff.ac)) {
     sound.kick.sampleId = pickS('kick', acoustic);
   }
-  if (rng.chance(aff.drums)) sound.snare.sampleId = pickS('snare', elec);
-  else if (rng.chance(aff.ac)) sound.snare.sampleId = pickS('snare', acoustic);
-  sound.clap = { sampleId: rng.chance(Math.max(aff.drums, aff.ac)) ? pickS('clap') : null };
-  if (rng.chance(aff.drums * 0.7)) {
-    sound.hat.sampleId = pickS('hat');
-    sound.hat.sampleOpenId = pickS('hato');
+  if (rng.chance(aff.drums)) sound.snare.sampleId = pickS('snare', digital);
+  else if (!elecP && rng.chance(aff.ac)) sound.snare.sampleId = pickS('snare', acoustic);
+  sound.clap = {
+    sampleId: rng.chance(Math.max(aff.drums, aff.ac))
+      ? pickS('clap', elecP ? digital : undefined) : null,
+  };
+  if (rng.chance(aff.drums * 0.8)) {
+    sound.hat.sampleId = pickS('hat', elecP ? digital : undefined);
+    sound.hat.sampleOpenId = pickS('hato', elecP ? digital : undefined);
   }
-  if (rng.chance(Math.max(aff.ac, 0.25))) sound.perc.sampleId = pickS('perc');
+  const percPred = elecP ? digital : (rng.chance(aff.ac) ? acoustic : undefined);
+  if (rng.chance(Math.max(aff.drums * 0.8, aff.ac))) sound.perc.sampleId = pickS('perc', percPred);
 
-  // pitched instrument families (mallets/kalimba/bells) as the lead voice
+  // sampled BASS: 808 / distorted 808 / reese families, repitched per note
+  if (BASS_FAMILY_NAMES.length && rng.chance(aff.bass)) {
+    const fam = rng.weighted(BASS_FAMILY_NAMES.map((f) => [f, avoidSet.has('bfam:' + f) ? 0.15 : 1]));
+    sound.bass.type = 'sample';
+    sound.bass.famName = fam;
+    sound.bass.family = BASS_FAMILIES[fam].slice().sort((a, b) => a.root - b.root);
+  }
+
+  // sampled VOCAL CHOPS: formant-voice one-shots, repitched to the sung line
+  if (VOX_FAMILY.length && rng.chance(aff.vox)) {
+    sound.chop.family = VOX_FAMILY;
+  }
+
+  // pitched instrument families; electronic personas prefer digital keys
   if (KEY_FAMILY_NAMES.length && sound.lead.type !== 'none' && rng.chance(aff.keys)) {
-    const fam = rng.weighted(KEY_FAMILY_NAMES.map((f) => [f, avoidSet.has('fam:' + f) ? 0.15 : 1]));
+    const fam = rng.weighted(KEY_FAMILY_NAMES.map((f) => {
+      const isDigital = f.startsWith('fmkeys');
+      let w = elecP ? (isDigital ? 2.5 : 0.5) : (isDigital ? 0.6 : 1.4);
+      if (avoidSet.has('fam:' + f)) w *= 0.15;
+      return [f, w];
+    }));
     sound.lead.type = 'keys';
     sound.lead.famName = fam;
     sound.lead.family = KEY_FAMILIES[fam].slice().sort((a, b) => a.root - b.root);
-    if (rng.chance(0.6)) sound.arp.useKeys = true; // arp plays the same instrument
+    if (rng.chance(0.6)) sound.arp.useKeys = true;
   }
 
-  // field-recording / texture beds
-  if (rng.chance(aff.tex)) sound.mix.bedSampleId = pickS('tex');
+  // texture beds: VHS/cassette/modem for the digital personas, field
+  // recordings and ocean drum for the atmospheric ones
+  if (rng.chance(aff.tex)) {
+    sound.mix.bedSampleId = pickS('tex', elecP ? (s) => s.s === 5 : undefined);
+  }
 
-  // recorded FX one-shots (gongs, cymbals, machine crashes)
+  // FX one-shots: risers/impacts/reverses/tape artifacts
   if (rng.chance(aff.fx)) {
     sound.fxS = {
-      impact: pickS('fx', (s) => s.id.startsWith('gong')) || pickS('fx'),
-      crash: pickS('fx', (s) => /crash|ride|suscym/.test(s.id)),
+      impact: elecP ? (pickS('fx', (s) => /impact|tapestop/.test(s.id)) || pickS('fx', digital))
+                    : (pickS('fx', (s) => s.id.startsWith('gong')) || pickS('fx')),
+      crash: pickS('fx', (s) => /crash|ride|suscym|reverse/.test(s.id)),
+      riser: pickS('fx', (s) => /riser/.test(s.id)),
+      downlift: pickS('fx', (s) => /downsweep/.test(s.id)),
+      swell: pickS('fx', (s) => /reverse|suscym/.test(s.id)),
     };
   }
 
@@ -581,11 +623,14 @@ function hybridize(sound, rng, persona, m, avoidSet) {
 
 /** every sample id a track needs — fetched lazily, awaited before export */
 function collectAssetIds(sound) {
+  const f = sound.fxS || {};
   const ids = [
     sound.kick.sampleId, sound.snare.sampleId, sound.clap && sound.clap.sampleId,
     sound.hat.sampleId, sound.hat.sampleOpenId, sound.perc.sampleId,
-    sound.mix.bedSampleId, sound.fxS && sound.fxS.impact, sound.fxS && sound.fxS.crash,
+    sound.mix.bedSampleId, f.impact, f.crash, f.riser, f.downlift, f.swell,
     ...(sound.lead.family || []).map((x) => x.id),
+    ...(sound.bass.family || []).map((x) => x.id),
+    ...(sound.chop.family || []).map((x) => x.id),
   ].filter(Boolean);
   return [...new Set(ids)];
 }
