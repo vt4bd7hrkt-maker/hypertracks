@@ -15,40 +15,6 @@
 </head>
 <body>
 
-  <!-- diagnostic: surface any error/audio state ON DEVICE (iOS debugging).
-       Classic inline script so it catches module-load errors too. -->
-  <script>
-    window.__diag = { errs: [], notes: [] };
-    function htShowDiag() {
-      var el = document.getElementById('diagbar');
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'diagbar';
-        el.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:99999;'
-          + 'background:#111;color:#0f0;font:11px/1.4 monospace;padding:8px 10px;'
-          + 'white-space:pre-wrap;max-height:55vh;overflow:auto;border-top:2px solid #0f0';
-        el.addEventListener('click', function () { el.remove(); });
-        document.body.appendChild(el);
-      }
-      var d = window.__diag;
-      el.textContent = 'HYPERTRACKS DIAG (tap to close)\n'
-        + 'UA: ' + navigator.userAgent + '\n'
-        + (d.notes.length ? 'STATE:\n  ' + d.notes.join('\n  ') + '\n' : '')
-        + (d.errs.length ? 'ERRORS:\n  ' + d.errs.join('\n  ') : 'no errors captured');
-    }
-    window.htShowDiag = htShowDiag;
-    window.htNote = function (m) { window.__diag.notes.push(m); };
-    window.addEventListener('error', function (e) {
-      window.__diag.errs.push((e.error && e.error.stack) || e.message || String(e));
-      htShowDiag();
-    });
-    window.addEventListener('unhandledrejection', function (e) {
-      var r = e.reason;
-      window.__diag.errs.push('promise: ' + ((r && (r.stack || r.message)) || r));
-      htShowDiag();
-    });
-  </script>
-
   <!-- paper texture + oscilloscope strip -->
   <canvas id="viz" aria-hidden="true"></canvas>
   <div class="grain" aria-hidden="true"></div>

@@ -97,24 +97,15 @@ function init() {
     state.player?.setBpm(state.userBpm);
   });
 
-  const mast = document.querySelector('.mast-word');
-  if (mast) mast.addEventListener('click', () => { try { window.htShowDiag(); } catch { /* noop */ } });
-
   initTimeline();
   requestAnimationFrame(uiLoop);
 }
 
-/**
- * iOS Web Audio unlock. Safari keeps a freshly-created AudioContext silent
- * until an audio node actually PLAYS inside a user gesture — ctx.resume()
- * alone is not enough, and our first real note is scheduled ~80 ms out, so
- * the clock never advances and nothing is ever heard. The fix: start a
- * one-sample silent buffer synchronously in the tap, then resume. Safe to
- * call repeatedly; re-runs on later gestures in case iOS re-suspends.
- */
-// A tiny looping silent WAV. Playing an HTMLAudioElement inside the gesture
-// moves the page's audio to the MEDIA output category — the decisive fix for
-// iOS routing Web Audio to the ringer channel (silenced by the side switch).
+// iOS Web Audio unlock (must run inside a tap gesture). Two parts, both
+// needed on iPhone: (a) playing a looping silent HTMLAudioElement moves the
+// page's audio to the MEDIA output category so it isn't routed to the ringer
+// channel (which the side switch silences); (b) starting a one-sample buffer
+// advances the AudioContext clock so scheduled notes actually sound.
 const SILENT_WAV = 'data:audio/wav;base64,UklGRkQDAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YSADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==';
 let silentEl = null;
 
@@ -129,9 +120,8 @@ function unlockAudio() {
       silentEl.setAttribute('playsinline', '');
       silentEl.volume = 1;
     }
-    const pr = silentEl.play();
-    if (pr && pr.catch) pr.catch((e) => note('silentEl.play rejected: ' + e.message));
-  } catch (e) { note('silentEl failed: ' + e.message); }
+    silentEl.play()?.catch(() => { /* gesture will retry */ });
+  } catch { /* no <audio> support */ }
   // (b) start a 1-sample buffer so the AudioContext clock advances in-gesture
   try {
     const buf = ctx.createBuffer(1, 1, 22050);
@@ -143,20 +133,14 @@ function unlockAudio() {
   if (ctx.state !== 'running') ctx.resume();
 }
 
-const note = (m) => { try { window.htNote?.(m); } catch { /* diag optional */ } };
-
 function enterApp() {
   const AC = window.AudioContext || window.webkitAudioContext;
-  note('AudioContext ctor: ' + (window.AudioContext ? 'std' : window.webkitAudioContext ? 'webkit' : 'MISSING'));
   state.ctx = new AC({ latencyHint: 'interactive' });
-  note('ctx created, state=' + state.ctx.state + ' sr=' + state.ctx.sampleRate);
   state.player = new Player(state.ctx);
   bank.init(state.ctx);
   state.viz = new Visualizer($('#viz'), state.ctx);
   state.viz.start();
   unlockAudio(); // MUST run inside this tap gesture (iOS)
-  note('after unlock, state=' + state.ctx.state);
-  state.ctx.onstatechange = () => note('statechange -> ' + state.ctx.state);
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.ctx.state !== 'running' && state.playing) state.ctx.resume();
@@ -170,21 +154,6 @@ function enterApp() {
 
   $('#overlay').classList.add('gone');
   startFresh(randomSeed());
-
-  // silence watchdog: if nothing is audible ~1.6 s after entering, surface
-  // the audio state on-screen so a device with no console can be diagnosed
-  setTimeout(() => {
-    let rms = 0;
-    try {
-      const a = state.viz.analyser, d = new Uint8Array(a.fftSize);
-      a.getByteTimeDomainData(d);
-      for (const v of d) { const y = (v - 128) / 128; rms += y * y; }
-      rms = Math.sqrt(rms / d.length);
-    } catch (e) { note('rms read failed: ' + e.message); }
-    note('1.6s: ctx=' + state.ctx.state + ' rms=' + rms.toFixed(3)
-      + ' graph=' + (state.player.graph ? 'yes' : 'no') + ' out=' + (state.player.graph?.out?.gain?.value));
-    if (rms < 0.01) { note('SILENT — audio not reaching output'); try { window.htShowDiag(); } catch { /* noop */ } }
-  }, 1600);
 }
 
 // ---------------------------------------------------------------------------

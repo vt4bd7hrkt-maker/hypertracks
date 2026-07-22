@@ -216,7 +216,13 @@ main {
   margin-top: auto;
   display: flex; align-items: stretch; gap: 8px;
 }
-button { font-family: var(--grotesk); color: var(--ink); border: none; background: none; cursor: pointer; }
+button {
+  /* iOS Safari otherwise paints native button chrome (gloss/gradient +
+     rounded corners) that never appears on Mac — reset to flat. */
+  -webkit-appearance: none; appearance: none;
+  border-radius: 0; background-image: none;
+  font-family: var(--grotesk); color: var(--ink); border: none; background: none; cursor: pointer;
+}
 
 .sq {
   width: 46px; border: var(--rule);
