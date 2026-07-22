@@ -122,14 +122,20 @@ function unlockAudio() {
   if (ctx.state !== 'running') ctx.resume();
 }
 
+const note = (m) => { try { window.htNote?.(m); } catch { /* diag optional */ } };
+
 function enterApp() {
   const AC = window.AudioContext || window.webkitAudioContext;
+  note('AudioContext ctor: ' + (window.AudioContext ? 'std' : window.webkitAudioContext ? 'webkit' : 'MISSING'));
   state.ctx = new AC({ latencyHint: 'interactive' });
+  note('ctx created, state=' + state.ctx.state + ' sr=' + state.ctx.sampleRate);
   state.player = new Player(state.ctx);
   bank.init(state.ctx);
   state.viz = new Visualizer($('#viz'), state.ctx);
   state.viz.start();
   unlockAudio(); // MUST run inside this tap gesture (iOS)
+  note('after unlock, state=' + state.ctx.state);
+  state.ctx.onstatechange = () => note('statechange -> ' + state.ctx.state);
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.ctx.state !== 'running' && state.playing) state.ctx.resume();
@@ -141,6 +147,21 @@ function enterApp() {
 
   $('#overlay').classList.add('gone');
   startFresh(randomSeed());
+
+  // silence watchdog: if nothing is audible ~1.6 s after entering, surface
+  // the audio state on-screen so a device with no console can be diagnosed
+  setTimeout(() => {
+    let rms = 0;
+    try {
+      const a = state.viz.analyser, d = new Uint8Array(a.fftSize);
+      a.getByteTimeDomainData(d);
+      for (const v of d) { const y = (v - 128) / 128; rms += y * y; }
+      rms = Math.sqrt(rms / d.length);
+    } catch (e) { note('rms read failed: ' + e.message); }
+    note('1.6s: ctx=' + state.ctx.state + ' rms=' + rms.toFixed(3)
+      + ' graph=' + (state.player.graph ? 'yes' : 'no') + ' out=' + (state.player.graph?.out?.gain?.value));
+    if (rms < 0.01) { note('SILENT — audio not reaching output'); try { window.htShowDiag(); } catch { /* noop */ } }
+  }, 1600);
 }
 
 // ---------------------------------------------------------------------------

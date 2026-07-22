@@ -7,6 +7,7 @@
 
 import { midiToFreq } from '../core/theory.js';
 import { bank } from './assetbank.js';
+import { makePanner } from './graph.js';
 
 /** Dispatch a composition event at absolute context time `when`. */
 export function playEvent(graph, ev, when) {
@@ -326,7 +327,7 @@ function perc(graph, ev, when) {
   o.frequency.exponentialRampToValueAtTime(p.freq * 0.8, when + p.dec);
   const g = ctx.createGain();
   env(g.gain, when, ev.vel * 0.5, 0.001, p.dec);
-  const pan = ctx.createStereoPanner();
+  const pan = makePanner(ctx);
   pan.pan.value = ((p.freq % 7) / 7 - 0.5) * 1.2;
   o.connect(g); g.connect(pan); pan.connect(graph.drums);
   sendTo(g, graph.delayIn, 0.15);
@@ -505,7 +506,7 @@ function supersaw(graph, ev, when, opts = {}) {
     const o = osc(ctx, 'sawtooth', f, when, when + ev.dur + 0.2, (i - 1) * L.detune);
     shapeOsc(o, graph, L.wave, 'sawtooth'); // per-track spectrum
     applyPorta(o, porta, f, when);
-    const p = ctx.createStereoPanner();
+    const p = makePanner(ctx);
     p.pan.value = pans[i] * (0.4 + m.dream * 0.6);
     const og = ctx.createGain(); og.gain.value = 1 / 3;
     o.connect(og); og.connect(p); p.connect(lp);
@@ -614,7 +615,7 @@ function pad(graph, ev, when) {
   const addVoice = (freq, type, det, panv, gain, wave) => {
     const o = osc(ctx, type, freq, when, stopAt, det);
     if (wave) shapeOsc(o, graph, wave, type);
-    const p = ctx.createStereoPanner();
+    const p = makePanner(ctx);
     p.pan.value = panv;
     const og = ctx.createGain(); og.gain.value = gain;
     o.connect(og); og.connect(p); p.connect(lp);
@@ -678,7 +679,7 @@ function pluck(graph, ev, when) {
   lp.Q.value = 1.1;
   const g = ctx.createGain();
   env(g.gain, when, 0.2 * ev.vel, 0.002, Math.max(ev.dur, 0.12));
-  const p = ctx.createStereoPanner();
+  const p = makePanner(ctx);
   p.pan.value = ((ev.midi % 7) / 7 - 0.5) * 0.8;
   o.connect(lp); lp.connect(g); g.connect(p); p.connect(graph.music);
   sendTo(g, graph.delayIn, 0.12 + m.space * 0.25);

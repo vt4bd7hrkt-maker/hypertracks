@@ -31,6 +31,16 @@ export const DEFAULT_FX = {
   echo: 0.5, width: 0.5, texture: 0.5, glide: 0.5, punch: 0.5,
 };
 
+// Some older iOS Safari builds lack createStereoPanner; a missing node type
+// would throw during graph build and silence EVERYTHING. Fall back to a plain
+// gain passthrough exposing a no-op `.pan` so call sites are unchanged.
+export function makePanner(ctx) {
+  if (ctx.createStereoPanner) return ctx.createStereoPanner();
+  const g = ctx.createGain();
+  g.pan = { value: 0, setValueAtTime() {}, setTargetAtTime() {}, linearRampToValueAtTime() {} };
+  return g;
+}
+
 export class AudioGraph {
   /**
    * @param {BaseAudioContext} ctx
@@ -87,8 +97,8 @@ export class AudioGraph {
     this.delayFilter.type = 'bandpass';
     this.delayFilter.frequency.value = mix.delayFilt;
     this.delayFilter.Q.value = 0.5;
-    const panL = ctx.createStereoPanner(); panL.pan.value = -0.7;
-    const panR = ctx.createStereoPanner(); panR.pan.value = 0.7;
+    const panL = makePanner(ctx); panL.pan.value = -0.7;
+    const panR = makePanner(ctx); panR.pan.value = 0.7;
     this.delayIn.connect(this.delayL);
     this.delayL.connect(panL);
     this.delayL.connect(this.delayFb);
