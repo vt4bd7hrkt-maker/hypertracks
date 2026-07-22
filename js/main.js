@@ -161,10 +161,12 @@ function enterApp() {
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.ctx.state !== 'running' && state.playing) state.ctx.resume();
   });
-  // safety net: any later tap re-asserts the unlock if iOS re-suspended it
-  const kick = () => { if (state.ctx.state !== 'running') unlockAudio(); };
-  document.addEventListener('pointerdown', kick, { capture: true });
-  document.addEventListener('touchend', kick, { capture: true });
+  // Safety net for iOS interruptions (a call/notification can suspend the
+  // context mid-playback). Only re-unlock when we INTEND to be playing — never
+  // resume a track the user deliberately paused, so a stray touch on empty
+  // space can't toggle playback. Pause/play stays exclusively on the button.
+  const kick = () => { if (state.playing && state.ctx.state !== 'running') unlockAudio(); };
+  document.addEventListener('pointerdown', kick, { capture: true, passive: true });
 
   $('#overlay').classList.add('gone');
   startFresh(randomSeed());
