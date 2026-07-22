@@ -101,18 +101,43 @@ function init() {
   requestAnimationFrame(uiLoop);
 }
 
+/**
+ * iOS Web Audio unlock. Safari keeps a freshly-created AudioContext silent
+ * until an audio node actually PLAYS inside a user gesture — ctx.resume()
+ * alone is not enough, and our first real note is scheduled ~80 ms out, so
+ * the clock never advances and nothing is ever heard. The fix: start a
+ * one-sample silent buffer synchronously in the tap, then resume. Safe to
+ * call repeatedly; re-runs on later gestures in case iOS re-suspends.
+ */
+function unlockAudio() {
+  const ctx = state.ctx;
+  if (!ctx) return;
+  try {
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch { /* already unlocked */ }
+  if (ctx.state !== 'running') ctx.resume();
+}
+
 function enterApp() {
   const AC = window.AudioContext || window.webkitAudioContext;
   state.ctx = new AC({ latencyHint: 'interactive' });
-  state.ctx.resume();
   state.player = new Player(state.ctx);
   bank.init(state.ctx);
   state.viz = new Visualizer($('#viz'), state.ctx);
   state.viz.start();
+  unlockAudio(); // MUST run inside this tap gesture (iOS)
 
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden && state.ctx.state !== 'running' && state.playing) state.ctx.resume();
   });
+  // safety net: any later tap re-asserts the unlock if iOS re-suspended it
+  const kick = () => { if (state.ctx.state !== 'running') unlockAudio(); };
+  document.addEventListener('pointerdown', kick, { capture: true });
+  document.addEventListener('touchend', kick, { capture: true });
 
   $('#overlay').classList.add('gone');
   startFresh(randomSeed());
@@ -166,7 +191,7 @@ function startFresh(seed) {
 
 function nextTrack() {
   pulse($('#next'));
-  if (state.ctx.state !== 'running') state.ctx.resume();
+  unlockAudio();
   // use the pre-produced track when the sliders haven't moved (instant + warm)
   const warm = state.next && state.next.comp && state.next.sig === JSON.stringify(state.macros);
   if (warm) startTrack(state.next.comp);
@@ -176,7 +201,7 @@ function nextTrack() {
 function mutateTrack() {
   if (!state.comp) return;
   pulse($('#mutate'));
-  if (state.ctx.state !== 'running') state.ctx.resume();
+  unlockAudio();
   startTrack(produceMutation(state.comp, state.macros, state.mutation, randomSeed(), state.recent));
 }
 
@@ -203,7 +228,7 @@ function navigateHistory(dir) {
 function togglePlay() {
   if (!state.ctx) return;
   if (state.playing) { state.ctx.suspend(); state.playing = false; }
-  else { state.ctx.resume(); state.playing = true; }
+  else { unlockAudio(); state.playing = true; }
   $('#playpause').textContent = state.playing ? '❚❚' : '▶';
 }
 
